@@ -1,0 +1,33 @@
+
+$PATH_TO - путь до места, где будет создана папка imx-yocto-bsp
+
+1.sudo apt-get install gawk wget git-core diffstat unzip texinfo gcc-multilib \
+build-essential chrpath socat cpio python python3 python3-pip python3-pexpect \
+xz-utils debianutils iputils-ping python3-git python3-jinja2 libegl1-mesa libsdl1.2-dev \
+pylint3 xterm rsync curl zstd pzstd lz4c lz4
+
+2.mkdir ~/bin
+3.curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
+4.chmod a+x ~/bin/repo
+5.export PATH=~/bin:$PATH
+6.mkdir imx-yocto-bsp
+7.cd imx-yocto-bsp
+8.repo init -u https://github.com/nxp-imx/imx-manifest -b imx-linux-kirkstone -m imx-5.15.32-2.0.0.xml
+9.repo sync
+10.DISTRO=fsl-imx-wayland MACHINE=imx8mm-lpddr4-evk source imx-setup-release.sh -b build
+11.devtool modify linux-imx
+12.devtool modify u-boot-imx
+13.cd workspace/sources/linux-imx
+14.patch -p1 < $PATH_TO_DIFF/linux_imx.diff
+15.cd ../u-boot-imx
+16.patch -p1 < $PATH_TO_DIFF/uboot_imx.diff
+17.Скопировать файлы для сборки из папки imx-source в $PATH_TO/imx-yocto-bsp/downloads
+18.Скопировать папку machine в $PATH_TO/imx-yocto-bsp/build/conf
+19.Cкопировать папку recipes в $PATH_TO/imx-yocto-bsp/build/workspace
+20.Скопировать файл layer.conf в $PATH_TO/imx-yocto-bsp/build/workspace/conf
+21.Перейти в папку $PATH_TO/imx-yocto-bsp/build
+22.Перед сборкой убедитесь, что свободного места на диске больше чем 150ГБ
+23.Запустить сборку bitbake imx-image-multimedia
+24.Запустить сборку для платы MACHINE=imx8mm-mgqs bitbake imx-image-multimedia
+25.Полученный образ расположен в $PATH_TO/imx-yocto-bsp/build/tmp/deploy/images/imx8mm-mgqs/imx-image-multimedia-imx8mm-mgqs-*.rootfs.wic.bz2
+

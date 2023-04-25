@@ -1,0 +1,48 @@
+commit fa6c3168595c02bd9d5366fcc28c9e7304947a3d
+Author: Ioana Ciornei <ioana.ciornei@nxp.com>
+Date:   Tue May 24 15:07:31 2022 +0300
+
+    dpaa2-eth: increase busy retries when interracting with QBMAN
+    
+    It seems that there are circumstances when access to QBMAN through the
+    software portals will be delayed. Accessing some lower speeds interfaces
+    while also QBMAN commands are issued from the kernel will lead to
+    software timeouts happening in the dpaa2-eth driver.
+    
+    What we have observed is that management commands like re-arming the
+    interrupts on a specific channel, waiting for a dequeue response to be
+    available etc, will take a longer time to complete.
+    All these commands have to wait for a valid bit to be set for the
+    command to be interpreted as successfully completed.
+    
+    Increase the maximum number of times the Linux kernel drivers will busy
+    poll for a successful result of one of these commands.
+    
+    Signed-off-by: Ioana Ciornei <ioana.ciornei@nxp.com>
+
+diff --git a/drivers/net/ethernet/freescale/dpaa2/dpaa2-eth.h b/drivers/net/ethernet/freescale/dpaa2/dpaa2-eth.h
+index a57f95cac6a7..baa13f948aec 100644
+--- a/drivers/net/ethernet/freescale/dpaa2/dpaa2-eth.h
++++ b/drivers/net/ethernet/freescale/dpaa2/dpaa2-eth.h
+@@ -354,7 +354,7 @@ static inline struct dpaa2_faead *dpaa2_get_faead(void *buf_addr, bool swa)
+  * hardware becomes unresponsive, but not give up too easily if
+  * the portal really is busy for valid reasons
+  */
+-#define DPAA2_ETH_SWP_BUSY_RETRIES	1000
++#define DPAA2_ETH_SWP_BUSY_RETRIES	10000
+ 
+ /* Driver statistics, other than those in struct rtnl_link_stats64.
+  * These are usually collected per-CPU and aggregated by ethtool.
+diff --git a/drivers/soc/fsl/dpio/qbman-portal.h b/drivers/soc/fsl/dpio/qbman-portal.h
+index b89f93ee6f7e..e40b3fa58f40 100644
+--- a/drivers/soc/fsl/dpio/qbman-portal.h
++++ b/drivers/soc/fsl/dpio/qbman-portal.h
+@@ -543,7 +543,7 @@ static inline int qbman_swp_CDAN_set_context_enable(struct qbman_swp *s,
+ static inline void *qbman_swp_mc_complete(struct qbman_swp *swp, void *cmd,
+ 					  u8 cmd_verb)
+ {
+-	int loopvar = 2000;
++	int loopvar = 10000;
+ 
+ 	qbman_swp_mc_submit(swp, cmd, cmd_verb);
+ 

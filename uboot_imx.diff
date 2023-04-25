@@ -1,0 +1,1327 @@
+diff --git a/arch/arm/dts/Makefile b/arch/arm/dts/Makefile
+index 95f2a49df4..417967f313 100644
+--- a/arch/arm/dts/Makefile
++++ b/arch/arm/dts/Makefile
+@@ -998,7 +998,8 @@ dtb-$(CONFIG_ARCH_IMX8M) += \
+ 	imx8mp-phyboard-pollux-rdk.dtb \
+ 	imx8mp-verdin.dtb \
+ 	imx8mq-pico-pi.dtb \
+-	imx8mq-kontron-pitx-imx8m.dtb
++	imx8mq-kontron-pitx-imx8m.dtb \
++	imx8mm-mgqs.dtb
+ 
+ dtb-$(CONFIG_ARCH_IMXRT) += imxrt1050-evk.dtb \
+ 	imxrt1020-evk.dtb
+diff --git a/arch/arm/dts/imx8mm-mgqs.dts b/arch/arm/dts/imx8mm-mgqs.dts
+new file mode 100644
+index 0000000000..9fd66f63ee
+--- /dev/null
++++ b/arch/arm/dts/imx8mm-mgqs.dts
+@@ -0,0 +1,561 @@
++/dts-v1/;
++
++#include "imx8mm-evk.dts"
++#include <dt-bindings/net/ti-dp83867.h>
++
++/ {
++	model = "NXP i.MX8MM MGQS_CARRIER_VER1 board";
++	compatible = "fsl,imx8mm-evk", "fsl,imx8mm";
++
++	/delete-node/ ir-receiver;
++	/delete-node/ audio-codec;
++	/delete-node/ sound-wm8524;
++	/delete-node/ leds;
++
++	esp32_gpios {
++		compatible = "gpio-leds";
++		pinctrl-names = "default";
++		pinctrl-0 = <&pinctrl_gpio_esp32>;
++
++		power_up {
++			label = "esp32_power_up";
++			gpio = <&gpio4 31 GPIO_ACTIVE_HIGH>;
++			default-state = "on";
++		};
++
++		boot_opt {
++			label = "esp32_boot_opt";
++			gpio = <&gpio5 3 GPIO_ACTIVE_HIGH>;
++			default-state = "on";
++		};
++	};
++
++	pcie0_refclk: pcie0-refclk {
++		compatible = "fixed-clock";
++		#clock-cells = <0>;
++		clock-frequency = <100000000>;
++	};
++
++	reg_usb_otg1_vbus: regulator-usb-otg1 {
++		compatible = "regulator-fixed";
++		enable-active-high;
++		/* USB1_PWR_EN */
++		gpio = <&gpio1 12 GPIO_ACTIVE_HIGH>;
++		pinctrl-names = "default";
++		pinctrl-0 = <&pinctrl_reg_usb1_en>;
++		regulator-name = "usb_otg1_vbus";
++		regulator-min-microvolt = <5000000>;
++		regulator-max-microvolt = <5000000>;
++	};
++
++	aliases {
++		usbgadget0 = &usbg1;
++	};
++
++	usbg1: usbg1 {
++		compatible = "fsl,imx27-usb-gadget";
++		dr_mode = "peripheral";
++		chipidea,usb = <&usbotg1>;
++		status = "okay";
++	};
++
++	usbg2: usbg2 {
++		compatible = "fsl,imx27-usb-gadget";
++		dr_mode = "peripheral";
++		chipidea,usb = <&usbotg2>;
++		status = "okay";
++	};
++};
++
++/* eMMC */
++&usdhc1 {
++	bus-width = <8>;
++	keep-power-in-suspend;
++	non-removable;
++	pinctrl-names = "default", "state_100mhz", "state_200mhz";
++	pinctrl-0 = <&pinctrl_usdhc1>;
++	pinctrl-1 = <&pinctrl_usdhc1_100mhz>;
++	pinctrl-2 = <&pinctrl_usdhc1_200mhz>;
++	pm-ignore-notify;
++	status = "okay";
++	/* TODO Strobe */
++};
++
++/* uSD */
++&usdhc2 {
++	cd-gpios = <&gpio2 12 GPIO_ACTIVE_LOW>;
++	pinctrl-0 = <&pinctrl_usdhc22>, <&pinctrl_usdhc22_cd>;
++	pinctrl-1 = <&pinctrl_usdhc22_100mhz>, <&pinctrl_usdhc22_cd>;
++	pinctrl-2 = <&pinctrl_usdhc22_200mhz>, <&pinctrl_usdhc22_cd>;
++	broken-cd;
++	/delete-property/ vmmc-supply ;
++};
++
++&usdhc3 {
++	status = "disabled";
++};
++
++/* USB-C */
++&usbotg1 {
++	vbus-supply = <&reg_usb_otg1_vbus>;
++	status = "okay";
++	/delete-node/ port;
++};
++/* USB-Host */
++&usbotg2 {
++	dr_mode = "host";
++	srp-disable;
++	hnp-disable;
++	adp-disable;
++	disable-over-current;
++	/delete-property/ usb-role-switch;
++	/*
++	 * FIXME: having USB2 enabled hangs the boot just after:
++	 * [    1.943365] ci_hdrc ci_hdrc.1: EHCI Host Controller
++	 * [    1.948287] ci_hdrc ci_hdrc.1: new USB bus registered, assigned bus number 1
++	 * [    1.971006] ci_hdrc ci_hdrc.1: USB 2.0 started, EHCI 1.00
++	 * [    1.977203] hub 1-0:1.0: USB hub found
++	 * [    1.980987] hub 1-0:1.0: 1 port detected
++	 */
++	status = "okay";
++};
++
++&fec1 {
++	phy-mode = "rgmii-id";
++};
++
++&ethphy0 { 
++	/*interrupt-parent = <&gpio1>;*/
++	/*interrupts = <11 IRQ_TYPE_LEVEL_LOW>;*/
++	/*reset-gpios = <&gpio1 11 GPIO_ACTIVE_LOW>;*/
++	/*reset-assert-us = <10000>;*/
++	/delete-property/ reset-gpios;
++	/delete-property/ reset-assert-us;
++	reg = <0>;
++	ti,rx-internal-delay = <DP83867_RGMIIDCTL_2_00_NS>;
++	ti,tx-internal-delay = <DP83867_RGMIIDCTL_2_00_NS>;
++	/*
++	tx-fifo-depth = <DP83867_PHYCR_FIFO_DEPTH_4_B_NIB>;
++	rx-fifo-depth = <DP83867_PHYCR_FIFO_DEPTH_4_B_NIB>;*/
++};
++
++&pcie0 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pinctrl_pcie0>;
++	clocks = <&clk IMX8MM_CLK_PCIE1_ROOT>,
++		 <&clk IMX8MM_CLK_PCIE1_AUX>,
++		 <&clk IMX8MM_CLK_PCIE1_PHY>,
++		 <&pcie0_refclk>;
++	clock-names = "pcie", "pcie_aux", "pcie_phy", "pcie_bus";
++	assigned-clocks = <&clk IMX8MM_CLK_PCIE1_AUX>,
++			  <&clk IMX8MM_CLK_PCIE1_PHY>,
++			  <&clk IMX8MM_CLK_PCIE1_CTRL>;
++	assigned-clock-rates = <10000000>, <100000000>, <250000000>;
++	assigned-clock-parents = <&clk IMX8MM_SYS_PLL2_50M>,
++				 <&clk IMX8MM_SYS_PLL2_100M>,
++				 <&clk IMX8MM_SYS_PLL2_250M>;
++	ext_osc = <1>;
++	status = "disabled";
++};
++
++&pcie0_ep {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pinctrl_pcie0>;
++	clocks = <&clk IMX8MM_CLK_PCIE1_ROOT>,
++		 <&clk IMX8MM_CLK_PCIE1_AUX>,
++		 <&clk IMX8MM_CLK_PCIE1_PHY>,
++		 <&pcie0_refclk>;
++	clock-names = "pcie", "pcie_aux", "pcie_phy", "pcie_bus";
++	assigned-clocks = <&clk IMX8MM_CLK_PCIE1_AUX>,
++			  <&clk IMX8MM_CLK_PCIE1_PHY>,
++			  <&clk IMX8MM_CLK_PCIE1_CTRL>;
++	assigned-clock-rates = <10000000>, <100000000>, <250000000>;
++	assigned-clock-parents = <&clk IMX8MM_SYS_PLL2_50M>,
++				 <&clk IMX8MM_SYS_PLL2_100M>,
++				 <&clk IMX8MM_SYS_PLL2_250M>;
++	ext_osc = <1>;
++	l1ss-disabled;
++	status = "disabled";
++};
++
++/* esp32 */
++&uart1 {
++	/delete-property/ dmas;
++	/delete-property/ dma-names;
++
++	pinctrl-names = "default";
++	pinctrl-0 = <&pinctrl_uart1>;
++	/*assigned-clocks = <&clk IMX8MM_CLK_UART1>;
++	assigned-clock-parents = <&clk IMX8MM_SYS_PLL1_80M>;*/
++	status = "okay";
++};
++
++&uart3 {
++	/delete-property/ dmas;
++	/delete-property/ dma-names;
++
++	pinctrl-names = "default";
++	pinctrl-0 = <&pinctrl_uart3>;
++	/*assigned-clocks = <&clk IMX8MM_CLK_UART3>;
++	assigned-clock-parents = <&clk IMX8MM_SYS_PLL1_80M>;*/
++	status = "okay";
++};
++
++/*M4 assigned*/
++&uart4 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pinctrl_uart4>;
++	status = "disabled";
++};
++
++&sai3 {
++	status = "disabled";
++};
++
++&iomuxc {
++
++	pinctrl_csi_pwn: csi_pwn_grp {
++		fsl,pins = <
++			MX8MM_IOMUXC_GPIO1_IO07_GPIO1_IO7		0x19
++		>;
++	};
++    usbotg_gpio: usbotg_grp {
++        fsl,pins = <
++			MX8MM_IOMUXC_GPIO1_IO10_USB1_OTG_ID		0x41
++		>;
++    };
++	pinctrl_csi_rst: csi_rst_grp {
++		fsl,pins = <
++			MX8MM_IOMUXC_GPIO1_IO06_GPIO1_IO6		0x19
++			MX8MM_IOMUXC_GPIO1_IO14_CCMSRCGPCMIX_CLKO1	0x59
++		>;
++	};
++
++	pinctrl_reg_usb1_en: regusb1engrp {
++		fsl,pins = <
++			MX8MM_IOMUXC_GPIO1_IO12_GPIO1_IO12	0x184		/* SODIMM 155 */
++		>;
++	};
++
++	pinctrl_pcie0: pcie0grp {
++		fsl,pins = <
++			MX8MM_IOMUXC_I2C4_SCL_PCIE1_CLKREQ_B	0x61 /* open drain, pull up */
++		>;
++	};
++
++	pinctrl_usdhc1: usdhc1grp {
++		fsl,pins = <
++			MX8MM_IOMUXC_SD1_CLK_USDHC1_CLK		0x190
++			MX8MM_IOMUXC_SD1_CMD_USDHC1_CMD		0x1d0
++			MX8MM_IOMUXC_SD1_DATA0_USDHC1_DATA0	0x1d0
++			MX8MM_IOMUXC_SD1_DATA1_USDHC1_DATA1	0x1d0
++			MX8MM_IOMUXC_SD1_DATA2_USDHC1_DATA2	0x1d0
++			MX8MM_IOMUXC_SD1_DATA3_USDHC1_DATA3	0x1d0
++			MX8MM_IOMUXC_SD1_DATA4_USDHC1_DATA4	0x1d0
++			MX8MM_IOMUXC_SD1_DATA5_USDHC1_DATA5	0x1d0
++			MX8MM_IOMUXC_SD1_DATA6_USDHC1_DATA6	0x1d0
++			MX8MM_IOMUXC_SD1_DATA7_USDHC1_DATA7	0x1d0
++			MX8MM_IOMUXC_SD1_STROBE_USDHC1_STROBE	0x190
++		>;
++	};
++
++	pinctrl_usdhc1_100mhz: usdhc1grp100mhz {
++		fsl,pins = <
++			MX8MM_IOMUXC_SD1_CLK_USDHC1_CLK		0x194
++			MX8MM_IOMUXC_SD1_CMD_USDHC1_CMD		0x1d4
++			MX8MM_IOMUXC_SD1_DATA0_USDHC1_DATA0	0x1d4
++			MX8MM_IOMUXC_SD1_DATA1_USDHC1_DATA1	0x1d4
++			MX8MM_IOMUXC_SD1_DATA2_USDHC1_DATA2	0x1d4
++			MX8MM_IOMUXC_SD1_DATA3_USDHC1_DATA3	0x1d4
++			MX8MM_IOMUXC_SD1_DATA4_USDHC1_DATA4	0x1d4
++			MX8MM_IOMUXC_SD1_DATA5_USDHC1_DATA5	0x1d4
++			MX8MM_IOMUXC_SD1_DATA6_USDHC1_DATA6	0x1d4
++			MX8MM_IOMUXC_SD1_DATA7_USDHC1_DATA7	0x1d4
++			MX8MM_IOMUXC_SD1_STROBE_USDHC1_STROBE	0x194
++		>;
++	};
++
++	pinctrl_usdhc1_200mhz: usdhc1grp200mhz {
++		fsl,pins = <
++			MX8MM_IOMUXC_SD1_CLK_USDHC1_CLK		0x196
++			MX8MM_IOMUXC_SD1_CMD_USDHC1_CMD		0x1d6
++			MX8MM_IOMUXC_SD1_DATA0_USDHC1_DATA0	0x1d6
++			MX8MM_IOMUXC_SD1_DATA1_USDHC1_DATA1	0x1d6
++			MX8MM_IOMUXC_SD1_DATA2_USDHC1_DATA2	0x1d6
++			MX8MM_IOMUXC_SD1_DATA3_USDHC1_DATA3	0x1d6
++			MX8MM_IOMUXC_SD1_DATA4_USDHC1_DATA4	0x1d6
++			MX8MM_IOMUXC_SD1_DATA5_USDHC1_DATA5	0x1d6
++			MX8MM_IOMUXC_SD1_DATA6_USDHC1_DATA6	0x1d6
++			MX8MM_IOMUXC_SD1_DATA7_USDHC1_DATA7	0x1d6
++			MX8MM_IOMUXC_SD1_STROBE_USDHC1_STROBE	0x196
++		>;
++	};
++
++	pinctrl_usdhc22_cd: usdhc2cdgrp {
++		fsl,pins = <
++			MX8MM_IOMUXC_SD2_CD_B_GPIO2_IO12	0x1c4		/* SODIMM 84 */
++		>;
++	};
++
++	pinctrl_usdhc22: usdhc2grp {
++		fsl,pins = <
++			MX8MM_IOMUXC_SD2_CLK_USDHC2_CLK		0x190
++			MX8MM_IOMUXC_SD2_CMD_USDHC2_CMD		0x1d0
++			MX8MM_IOMUXC_SD2_DATA0_USDHC2_DATA0	0x1d0
++			MX8MM_IOMUXC_SD2_DATA1_USDHC2_DATA1	0x1d0
++			MX8MM_IOMUXC_SD2_DATA2_USDHC2_DATA2	0x1d0
++			MX8MM_IOMUXC_SD2_DATA3_USDHC2_DATA3	0x1d0
++		>;
++	};
++
++	pinctrl_usdhc22_100mhz: usdhc2-100mhzgrp {
++		fsl,pins = <
++			MX8MM_IOMUXC_SD2_CLK_USDHC2_CLK		0x194
++			MX8MM_IOMUXC_SD2_CMD_USDHC2_CMD		0x1d4
++			MX8MM_IOMUXC_SD2_DATA0_USDHC2_DATA0	0x1d4
++			MX8MM_IOMUXC_SD2_DATA1_USDHC2_DATA1	0x1d4
++			MX8MM_IOMUXC_SD2_DATA2_USDHC2_DATA2	0x1d4
++			MX8MM_IOMUXC_SD2_DATA3_USDHC2_DATA3	0x1d4
++		>;
++	};
++
++	pinctrl_usdhc22_200mhz: usdhc2-200mhzgrp {
++		fsl,pins = <
++			MX8MM_IOMUXC_SD2_CLK_USDHC2_CLK		0x196
++			MX8MM_IOMUXC_SD2_CMD_USDHC2_CMD		0x1d6
++			MX8MM_IOMUXC_SD2_DATA0_USDHC2_DATA0	0x1d6
++			MX8MM_IOMUXC_SD2_DATA1_USDHC2_DATA1	0x1d6
++			MX8MM_IOMUXC_SD2_DATA2_USDHC2_DATA2	0x1d6
++			MX8MM_IOMUXC_SD2_DATA3_USDHC2_DATA3	0x1d6
++		>;
++	};
++
++	pinctrl_fec1: fec1grp {
++		fsl,pins = <
++			MX8MM_IOMUXC_ENET_MDC_ENET1_MDC			0x3
++			MX8MM_IOMUXC_ENET_MDIO_ENET1_MDIO		0x3
++			MX8MM_IOMUXC_ENET_TD3_ENET1_RGMII_TD3		0x1f
++			MX8MM_IOMUXC_ENET_TD2_ENET1_RGMII_TD2		0x1f
++			MX8MM_IOMUXC_ENET_TD1_ENET1_RGMII_TD1		0x1f
++			MX8MM_IOMUXC_ENET_TD0_ENET1_RGMII_TD0		0x1f
++			MX8MM_IOMUXC_ENET_RD3_ENET1_RGMII_RD3		0x91
++			MX8MM_IOMUXC_ENET_RD2_ENET1_RGMII_RD2		0x91
++			MX8MM_IOMUXC_ENET_RD1_ENET1_RGMII_RD1		0x91
++			MX8MM_IOMUXC_ENET_RD0_ENET1_RGMII_RD0		0x91
++			MX8MM_IOMUXC_ENET_TXC_ENET1_RGMII_TXC		0x1f
++			MX8MM_IOMUXC_ENET_RXC_ENET1_RGMII_RXC		0x91
++			MX8MM_IOMUXC_ENET_RX_CTL_ENET1_RGMII_RX_CTL	0x91
++			MX8MM_IOMUXC_ENET_TX_CTL_ENET1_RGMII_TX_CTL	0x1f
++			MX8MM_IOMUXC_GPIO1_IO11_GPIO1_IO11		0x1c4
++		>;
++	};
++
++	pinctrl_gpio_esp32: regespgrp {
++		fsl,pins = <
++			MX8MM_IOMUXC_SAI3_TXFS_GPIO4_IO31		0x19
++			MX8MM_IOMUXC_SPDIF_TX_GPIO5_IO3			0x19
++		>;
++	};
++
++	pinctrl_uart1: uart1grp {
++		fsl,pins = <
++			MX8MM_IOMUXC_UART1_RXD_UART1_DCE_RX     	0x140
++			MX8MM_IOMUXC_UART1_TXD_UART1_DCE_TX     	0x140
++		>;
++	};
++
++	pinctrl_uart3: uart3grp {
++		fsl,pins = <
++			MX8MM_IOMUXC_UART3_RXD_UART3_DCE_RX		0x140
++			MX8MM_IOMUXC_UART3_TXD_UART3_DCE_TX		0x140
++		>;
++	};
++
++	pinctrl_uart4: uart4grp {
++		fsl,pins = <
++			MX8MM_IOMUXC_UART4_RXD_UART4_DCE_RX		0x140
++			MX8MM_IOMUXC_UART4_TXD_UART4_DCE_TX		0x140
++		>;
++	};
++};
++
++/delete-node/ &pmic;
++
++&i2c1 {
++
++	pmic: pmic@4b {
++		compatible = "rohm,bd71847";
++		reg = <0x4b>;
++		pinctrl-0 = <&pinctrl_pmic>;
++		interrupt-parent = <&gpio1>;
++		interrupts = <3 GPIO_ACTIVE_LOW>;
++		rohm,reset-snvs-powered;
++
++		regulators {
++			buck1_reg: BUCK1 {
++				regulator-name = "BUCK1";
++				regulator-min-microvolt = <700000>;
++				regulator-max-microvolt = <1300000>;
++				regulator-boot-on;
++				regulator-always-on;
++				regulator-ramp-delay = <1250>;
++			};
++
++			buck2_reg: BUCK2 {
++				regulator-name = "BUCK2";
++				regulator-min-microvolt = <700000>;
++				regulator-max-microvolt = <1300000>;
++				regulator-boot-on;
++				regulator-always-on;
++				regulator-ramp-delay = <1250>;
++				rohm,dvs-run-voltage = <1000000>;
++				rohm,dvs-idle-voltage = <900000>;
++			};
++
++			buck3_reg: BUCK3 {
++				// BUCK5 in datasheet
++				regulator-name = "BUCK3";
++				regulator-min-microvolt = <700000>;
++				regulator-max-microvolt = <1350000>;
++				regulator-boot-on;
++				regulator-always-on;
++			};
++
++			buck4_reg: BUCK4 {
++				// BUCK6 in datasheet
++				regulator-name = "BUCK4";
++				regulator-min-microvolt = <3000000>;
++				regulator-max-microvolt = <3300000>;
++				regulator-boot-on;
++				regulator-always-on;
++			};
++
++			buck5_reg: BUCK5 {
++				// BUCK7 in datasheet
++				regulator-name = "BUCK5";
++				regulator-min-microvolt = <1605000>;
++				regulator-max-microvolt = <1995000>;
++				regulator-boot-on;
++				regulator-always-on;
++			};
++
++			buck6_reg: BUCK6 {
++				// BUCK8 in datasheet
++				regulator-name = "BUCK6";
++				regulator-min-microvolt = <800000>;
++				regulator-max-microvolt = <1400000>;
++				regulator-boot-on;
++				regulator-always-on;
++			};
++
++			ldo1_reg: LDO1 {
++				regulator-name = "LDO1";
++				regulator-min-microvolt = <3000000>;
++				regulator-max-microvolt = <3300000>;
++				regulator-boot-on;
++				regulator-always-on;
++			};
++
++			ldo2_reg: LDO2 {
++				regulator-name = "LDO2";
++				regulator-min-microvolt = <900000>;
++				regulator-max-microvolt = <900000>;
++				regulator-boot-on;
++				regulator-always-on;
++			};
++
++			ldo3_reg: LDO3 {
++				regulator-name = "LDO3";
++				regulator-min-microvolt = <1800000>;
++				regulator-max-microvolt = <3300000>;
++				regulator-boot-on;
++				regulator-always-on;
++			};
++
++			ldo4_reg: LDO4 {
++				regulator-name = "LDO4";
++				regulator-min-microvolt = <900000>;
++				regulator-max-microvolt = <1800000>;
++				regulator-boot-on;
++				regulator-always-on;
++			};
++
++			ldo6_reg: LDO6 {
++				regulator-name = "LDO6";
++				regulator-min-microvolt = <900000>;
++				regulator-max-microvolt = <1800000>;
++				regulator-boot-on;
++				regulator-always-on;
++			};
++		};
++	};
++};
++
++&i2c2 {
++
++	/delete-node/ tcpc@50;
++};
++
++&i2c3 {
++	/delete-node/ gpio@20;
++
++	ov5640_mipi: ov5640_mipi@3c {
++		compatible = "ovti,ov5640_mipi";
++		reg = <0x3c>;
++		status = "okay";
++		pinctrl-names = "default";
++		pinctrl-0 = <&pinctrl_csi_pwn>, <&pinctrl_csi_rst>;
++		clocks = <&clk IMX8MM_CLK_CLKO1>;
++		clock-names = "csi_mclk";
++		assigned-clocks = <&clk IMX8MM_CLK_CLKO1>;
++		assigned-clock-parents = <&clk IMX8MM_CLK_24M>;
++		assigned-clock-rates = <24000000>;
++		csi_id = <0>;
++		pwn-gpios = <&gpio1 7 GPIO_ACTIVE_HIGH>;
++		rst-gpios = <&gpio1 6 GPIO_ACTIVE_LOW>;
++		mclk = <24000000>;
++		mclk_source = <0>;
++		port {
++			ov5640_mipi1_ep: endpoint {
++				remote-endpoint = <&mipi1_sensor_ep>;
++			};
++		};
++	};
++};
++
++&csi1_bridge {
++	fsl,mipi-mode;
++	fsl,two-8bit-sensor-mode;
++	status = "okay";
++
++	port {
++		csi1_ep: endpoint {
++			remote-endpoint = <&csi1_mipi_ep>;
++		};
++	};
++};
++
++&mipi_csi_1 {
++	#address-cells = <1>;
++	#size-cells = <0>;
++	status = "okay";
++	port {
++		mipi1_sensor_ep: endpoint@1 {
++			remote-endpoint = <&ov5640_mipi1_ep>;
++			data-lanes = <2>;
++			csis-hs-settle = <13>;
++			csis-clk-settle = <2>;
++			csis-wclk;
++		};
++
++		csi1_mipi_ep: endpoint@2 {
++			remote-endpoint = <&csi1_ep>;
++		};
++	};
++};
++
++&flexspi {
++	status = "disabled";
++
++	/delete-node/ flash@0;
++};
+diff --git a/board/freescale/imx8mm_evk/lpddr4_timing.c b/board/freescale/imx8mm_evk/lpddr4_timing.c
+index 3495b9c931..627d000df2 100644
+--- a/board/freescale/imx8mm_evk/lpddr4_timing.c
++++ b/board/freescale/imx8mm_evk/lpddr4_timing.c
+@@ -1,21 +1,26 @@
+ /*
+- * Copyright 2018-2019 NXP
++ * Copyright 2019 NXP
+  *
+  * SPDX-License-Identifier:	GPL-2.0+
+  *
+  * Generated code from MX8M_DDR_tool
++ *
++ * Align with uboot version:
++ * imx_v2019.04_5.4.x and above version
++ * For imx_v2018.03_4.14.78_1.0.0_ga ~ imx_v2018.04_4.19.35_1.1.0_ga:
++ * please replace #include <asm/arch/ddr.h> with #include <asm/arch/imx8m_ddr.h>
+  */
+ 
+ #include <linux/kernel.h>
+ #include <asm/arch/ddr.h>
+ 
+ struct dram_cfg_param ddr_ddrc_cfg[] = {
+-	/* Initialize DDRC registers */
++	/** Initialize DDRC registers **/
+ 	{ 0x3d400304, 0x1 },
+ 	{ 0x3d400030, 0x1 },
+ 	{ 0x3d400000, 0xa1080020 },
+-	{ 0x3d400020, 0x223 },
+-	{ 0x3d400024, 0x16e3600 },
++	{ 0x3d400020, 0x203 },
++	{ 0x3d400024, 0x3a980 },
+ 	{ 0x3d400064, 0x5b00d2 },
+ 	{ 0x3d4000d0, 0xc00305ba },
+ 	{ 0x3d4000d4, 0x940000 },
+@@ -45,7 +50,7 @@ struct dram_cfg_param ddr_ddrc_cfg[] = {
+ 	{ 0x3d4001a8, 0x80000000 },
+ 	{ 0x3d4001b0, 0x11 },
+ 	{ 0x3d4001c0, 0x1 },
+-	{ 0x3d4001c4, 0x0 },
++	{ 0x3d4001c4, 0x1 },
+ 	{ 0x3d4000f4, 0xc99 },
+ 	{ 0x3d400108, 0x70e1617 },
+ 	{ 0x3d400200, 0x1f },
+@@ -54,8 +59,6 @@ struct dram_cfg_param ddr_ddrc_cfg[] = {
+ 	{ 0x3d400204, 0x80808 },
+ 	{ 0x3d400214, 0x7070707 },
+ 	{ 0x3d400218, 0x7070707 },
+-
+-	/* performance setting */
+ 	{ 0x3d400250, 0x29001701 },
+ 	{ 0x3d400254, 0x2c },
+ 	{ 0x3d40025c, 0x4000030 },
+@@ -67,97 +70,43 @@ struct dram_cfg_param ddr_ddrc_cfg[] = {
+ 	{ 0x3d400498, 0x620096 },
+ 	{ 0x3d40049c, 0x1100e07 },
+ 	{ 0x3d4004a0, 0xc8012c },
+-
+-	/* P1: 400mts */
+-	{ 0x3d402020, 0x21 },
+-	{ 0x3d402024, 0x30d400 },
+-	{ 0x3d402050, 0x20d040 },
+-	{ 0x3d402064, 0xc001c },
+-	{ 0x3d4020dc, 0x840000 },
+-	{ 0x3d4020e0, 0x310000 },
+-	{ 0x3d4020e8, 0x66004d },
+-	{ 0x3d4020ec, 0x16004d },
+-	{ 0x3d402100, 0xa040305 },
+-	{ 0x3d402104, 0x30407 },
+-	{ 0x3d402108, 0x203060b },
+-	{ 0x3d40210c, 0x505000 },
+-	{ 0x3d402110, 0x2040202 },
+-	{ 0x3d402114, 0x2030202 },
+-	{ 0x3d402118, 0x1010004 },
+-	{ 0x3d40211c, 0x301 },
+-	{ 0x3d402130, 0x20300 },
+-	{ 0x3d402134, 0xa100002 },
+-	{ 0x3d402138, 0x1d },
+-	{ 0x3d402144, 0x14000a },
+-	{ 0x3d402180, 0x640004 },
+-	{ 0x3d402190, 0x3818200 },
+-	{ 0x3d402194, 0x80303 },
+-	{ 0x3d4021b4, 0x100 },
+-
+-	/* p2: 100mts */
+-	{ 0x3d403020, 0x21 },
+-	{ 0x3d403024, 0xc3500 },
+-	{ 0x3d403050, 0x20d040 },
+-	{ 0x3d403064, 0x30007 },
+-	{ 0x3d4030dc, 0x840000 },
+-	{ 0x3d4030e0, 0x310000 },
+-	{ 0x3d4030e8, 0x66004d },
+-	{ 0x3d4030ec, 0x16004d },
+-	{ 0x3d403100, 0xa010102 },
+-	{ 0x3d403104, 0x30404 },
+-	{ 0x3d403108, 0x203060b },
+-	{ 0x3d40310c, 0x505000 },
+-	{ 0x3d403110, 0x2040202 },
+-	{ 0x3d403114, 0x2030202 },
+-	{ 0x3d403118, 0x1010004 },
+-	{ 0x3d40311c, 0x301 },
+-	{ 0x3d403130, 0x20300 },
+-	{ 0x3d403134, 0xa100002 },
+-	{ 0x3d403138, 0x8 },
+-	{ 0x3d403144, 0x50003 },
+-	{ 0x3d403180, 0x190004 },
+-	{ 0x3d403190, 0x3818200 },
+-	{ 0x3d403194, 0x80303 },
+-	{ 0x3d4031b4, 0x100 },
+-
+-	/* default boot point */
+ 	{ 0x3d400028, 0x0 },
+ };
+ 
+ /* PHY Initialize Configuration */
+ struct dram_cfg_param ddr_ddrphy_cfg[] = {
+-	{ 0x100a0, 0x0 },
+-	{ 0x100a1, 0x1 },
+-	{ 0x100a2, 0x2 },
++	{ 0x100a0, 0x1 },
++	{ 0x100a1, 0x0 },
++	{ 0x100a2, 0x4 },
+ 	{ 0x100a3, 0x3 },
+-	{ 0x100a4, 0x4 },
++	{ 0x100a4, 0x7 },
+ 	{ 0x100a5, 0x5 },
+-	{ 0x100a6, 0x6 },
+-	{ 0x100a7, 0x7 },
++	{ 0x100a6, 0x2 },
++	{ 0x100a7, 0x6 },
+ 	{ 0x110a0, 0x0 },
+ 	{ 0x110a1, 0x1 },
+-	{ 0x110a2, 0x3 },
+-	{ 0x110a3, 0x4 },
+-	{ 0x110a4, 0x5 },
+-	{ 0x110a5, 0x2 },
+-	{ 0x110a6, 0x7 },
+-	{ 0x110a7, 0x6 },
++	{ 0x110a2, 0x2 },
++	{ 0x110a3, 0x3 },
++	{ 0x110a4, 0x4 },
++	{ 0x110a5, 0x5 },
++	{ 0x110a6, 0x6 },
++	{ 0x110a7, 0x7 },
+ 	{ 0x120a0, 0x0 },
+ 	{ 0x120a1, 0x1 },
+ 	{ 0x120a2, 0x3 },
+-	{ 0x120a3, 0x2 },
+-	{ 0x120a4, 0x5 },
+-	{ 0x120a5, 0x4 },
+-	{ 0x120a6, 0x7 },
+-	{ 0x120a7, 0x6 },
++	{ 0x120a3, 0x5 },
++	{ 0x120a4, 0x4 },
++	{ 0x120a5, 0x2 },
++	{ 0x120a6, 0x6 },
++	{ 0x120a7, 0x7 },
+ 	{ 0x130a0, 0x0 },
+-	{ 0x130a1, 0x1 },
+-	{ 0x130a2, 0x2 },
++	{ 0x130a1, 0x5 },
++	{ 0x130a2, 0x4 },
+ 	{ 0x130a3, 0x3 },
+-	{ 0x130a4, 0x4 },
+-	{ 0x130a5, 0x5 },
+-	{ 0x130a6, 0x6 },
+-	{ 0x130a7, 0x7 },
++	{ 0x130a4, 0x2 },
++	{ 0x130a5, 0x7 },
++	{ 0x130a6, 0x1 },
++	{ 0x130a7, 0x6 },
+ 	{ 0x1005f, 0x1ff },
+ 	{ 0x1015f, 0x1ff },
+ 	{ 0x1105f, 0x1ff },
+@@ -166,22 +115,6 @@ struct dram_cfg_param ddr_ddrphy_cfg[] = {
+ 	{ 0x1215f, 0x1ff },
+ 	{ 0x1305f, 0x1ff },
+ 	{ 0x1315f, 0x1ff },
+-	{ 0x11005f, 0x1ff },
+-	{ 0x11015f, 0x1ff },
+-	{ 0x11105f, 0x1ff },
+-	{ 0x11115f, 0x1ff },
+-	{ 0x11205f, 0x1ff },
+-	{ 0x11215f, 0x1ff },
+-	{ 0x11305f, 0x1ff },
+-	{ 0x11315f, 0x1ff },
+-	{ 0x21005f, 0x1ff },
+-	{ 0x21015f, 0x1ff },
+-	{ 0x21105f, 0x1ff },
+-	{ 0x21115f, 0x1ff },
+-	{ 0x21205f, 0x1ff },
+-	{ 0x21215f, 0x1ff },
+-	{ 0x21305f, 0x1ff },
+-	{ 0x21315f, 0x1ff },
+ 	{ 0x55, 0x1ff },
+ 	{ 0x1055, 0x1ff },
+ 	{ 0x2055, 0x1ff },
+@@ -193,23 +126,11 @@ struct dram_cfg_param ddr_ddrphy_cfg[] = {
+ 	{ 0x8055, 0x1ff },
+ 	{ 0x9055, 0x1ff },
+ 	{ 0x200c5, 0x19 },
+-	{ 0x1200c5, 0x7 },
+-	{ 0x2200c5, 0x7 },
+ 	{ 0x2002e, 0x2 },
+-	{ 0x12002e, 0x2 },
+-	{ 0x22002e, 0x2 },
+ 	{ 0x90204, 0x0 },
+-	{ 0x190204, 0x0 },
+-	{ 0x290204, 0x0 },
+ 	{ 0x20024, 0x1ab },
+ 	{ 0x2003a, 0x0 },
+-	{ 0x120024, 0x1ab },
+-	{ 0x2003a, 0x0 },
+-	{ 0x220024, 0x1ab },
+-	{ 0x2003a, 0x0 },
+ 	{ 0x20056, 0x3 },
+-	{ 0x120056, 0xa },
+-	{ 0x220056, 0xa },
+ 	{ 0x1004d, 0xe00 },
+ 	{ 0x1014d, 0xe00 },
+ 	{ 0x1104d, 0xe00 },
+@@ -218,22 +139,6 @@ struct dram_cfg_param ddr_ddrphy_cfg[] = {
+ 	{ 0x1214d, 0xe00 },
+ 	{ 0x1304d, 0xe00 },
+ 	{ 0x1314d, 0xe00 },
+-	{ 0x11004d, 0xe00 },
+-	{ 0x11014d, 0xe00 },
+-	{ 0x11104d, 0xe00 },
+-	{ 0x11114d, 0xe00 },
+-	{ 0x11204d, 0xe00 },
+-	{ 0x11214d, 0xe00 },
+-	{ 0x11304d, 0xe00 },
+-	{ 0x11314d, 0xe00 },
+-	{ 0x21004d, 0xe00 },
+-	{ 0x21014d, 0xe00 },
+-	{ 0x21104d, 0xe00 },
+-	{ 0x21114d, 0xe00 },
+-	{ 0x21204d, 0xe00 },
+-	{ 0x21214d, 0xe00 },
+-	{ 0x21304d, 0xe00 },
+-	{ 0x21314d, 0xe00 },
+ 	{ 0x10049, 0xeba },
+ 	{ 0x10149, 0xeba },
+ 	{ 0x11049, 0xeba },
+@@ -242,22 +147,6 @@ struct dram_cfg_param ddr_ddrphy_cfg[] = {
+ 	{ 0x12149, 0xeba },
+ 	{ 0x13049, 0xeba },
+ 	{ 0x13149, 0xeba },
+-	{ 0x110049, 0xeba },
+-	{ 0x110149, 0xeba },
+-	{ 0x111049, 0xeba },
+-	{ 0x111149, 0xeba },
+-	{ 0x112049, 0xeba },
+-	{ 0x112149, 0xeba },
+-	{ 0x113049, 0xeba },
+-	{ 0x113149, 0xeba },
+-	{ 0x210049, 0xeba },
+-	{ 0x210149, 0xeba },
+-	{ 0x211049, 0xeba },
+-	{ 0x211149, 0xeba },
+-	{ 0x212049, 0xeba },
+-	{ 0x212149, 0xeba },
+-	{ 0x213049, 0xeba },
+-	{ 0x213149, 0xeba },
+ 	{ 0x43, 0x63 },
+ 	{ 0x1043, 0x63 },
+ 	{ 0x2043, 0x63 },
+@@ -272,8 +161,6 @@ struct dram_cfg_param ddr_ddrphy_cfg[] = {
+ 	{ 0x20075, 0x4 },
+ 	{ 0x20050, 0x0 },
+ 	{ 0x20008, 0x2ee },
+-	{ 0x120008, 0x64 },
+-	{ 0x220008, 0x19 },
+ 	{ 0x20088, 0x9 },
+ 	{ 0x200b2, 0xdc },
+ 	{ 0x10043, 0x5a1 },
+@@ -284,48 +171,20 @@ struct dram_cfg_param ddr_ddrphy_cfg[] = {
+ 	{ 0x12143, 0x5a1 },
+ 	{ 0x13043, 0x5a1 },
+ 	{ 0x13143, 0x5a1 },
+-	{ 0x1200b2, 0xdc },
+-	{ 0x110043, 0x5a1 },
+-	{ 0x110143, 0x5a1 },
+-	{ 0x111043, 0x5a1 },
+-	{ 0x111143, 0x5a1 },
+-	{ 0x112043, 0x5a1 },
+-	{ 0x112143, 0x5a1 },
+-	{ 0x113043, 0x5a1 },
+-	{ 0x113143, 0x5a1 },
+-	{ 0x2200b2, 0xdc },
+-	{ 0x210043, 0x5a1 },
+-	{ 0x210143, 0x5a1 },
+-	{ 0x211043, 0x5a1 },
+-	{ 0x211143, 0x5a1 },
+-	{ 0x212043, 0x5a1 },
+-	{ 0x212143, 0x5a1 },
+-	{ 0x213043, 0x5a1 },
+-	{ 0x213143, 0x5a1 },
+ 	{ 0x200fa, 0x1 },
+-	{ 0x1200fa, 0x1 },
+-	{ 0x2200fa, 0x1 },
+ 	{ 0x20019, 0x1 },
+-	{ 0x120019, 0x1 },
+-	{ 0x220019, 0x1 },
+-	{ 0x200f0, 0x660 },
++	{ 0x200f0, 0x0 },
+ 	{ 0x200f1, 0x0 },
+ 	{ 0x200f2, 0x4444 },
+ 	{ 0x200f3, 0x8888 },
+-	{ 0x200f4, 0x5665 },
++	{ 0x200f4, 0x5555 },
+ 	{ 0x200f5, 0x0 },
+ 	{ 0x200f6, 0x0 },
+ 	{ 0x200f7, 0xf000 },
+ 	{ 0x20025, 0x0 },
+ 	{ 0x2002d, 0x0 },
+-	{ 0x12002d, 0x0 },
+-	{ 0x22002d, 0x0 },
+ 	{ 0x200c7, 0x21 },
+-	{ 0x1200c7, 0x21 },
+-	{ 0x2200c7, 0x21 },
+ 	{ 0x200ca, 0x24 },
+-	{ 0x1200ca, 0x24 },
+-	{ 0x2200ca, 0x24 },
+ };
+ 
+ /* ddr phy trained csr */
+@@ -1089,86 +948,6 @@ struct dram_cfg_param ddr_fsp0_cfg[] = {
+ };
+ 
+ 
+-/* P1 message block paremeter for training firmware */
+-struct dram_cfg_param ddr_fsp1_cfg[] = {
+-	{ 0xd0000, 0x0 },
+-	{ 0x54002, 0x101 },
+-	{ 0x54003, 0x190 },
+-	{ 0x54004, 0x2 },
+-	{ 0x54005, 0x2228 },
+-	{ 0x54006, 0x11 },
+-	{ 0x54008, 0x121f },
+-	{ 0x54009, 0xc8 },
+-	{ 0x5400b, 0x2 },
+-	{ 0x54012, 0x110 },
+-	{ 0x54019, 0x84 },
+-	{ 0x5401a, 0x31 },
+-	{ 0x5401b, 0x4d66 },
+-	{ 0x5401c, 0x4d00 },
+-	{ 0x5401e, 0x16 },
+-	{ 0x5401f, 0x84 },
+-	{ 0x54020, 0x31 },
+-	{ 0x54021, 0x4d66 },
+-	{ 0x54022, 0x4d00 },
+-	{ 0x54024, 0x16 },
+-	{ 0x5402b, 0x1000 },
+-	{ 0x5402c, 0x1 },
+-	{ 0x54032, 0x8400 },
+-	{ 0x54033, 0x3100 },
+-	{ 0x54034, 0x6600 },
+-	{ 0x54035, 0x4d },
+-	{ 0x54036, 0x4d },
+-	{ 0x54037, 0x1600 },
+-	{ 0x54038, 0x8400 },
+-	{ 0x54039, 0x3100 },
+-	{ 0x5403a, 0x6600 },
+-	{ 0x5403b, 0x4d },
+-	{ 0x5403c, 0x4d },
+-	{ 0x5403d, 0x1600 },
+-	{ 0xd0000, 0x1 },
+-};
+-
+-
+-/* P2 message block paremeter for training firmware */
+-struct dram_cfg_param ddr_fsp2_cfg[] = {
+-	{ 0xd0000, 0x0 },
+-	{ 0x54002, 0x102 },
+-	{ 0x54003, 0x64 },
+-	{ 0x54004, 0x2 },
+-	{ 0x54005, 0x2228 },
+-	{ 0x54006, 0x11 },
+-	{ 0x54008, 0x121f },
+-	{ 0x54009, 0xc8 },
+-	{ 0x5400b, 0x2 },
+-	{ 0x54012, 0x110 },
+-	{ 0x54019, 0x84 },
+-	{ 0x5401a, 0x31 },
+-	{ 0x5401b, 0x4d66 },
+-	{ 0x5401c, 0x4d00 },
+-	{ 0x5401e, 0x16 },
+-	{ 0x5401f, 0x84 },
+-	{ 0x54020, 0x31 },
+-	{ 0x54021, 0x4d66 },
+-	{ 0x54022, 0x4d00 },
+-	{ 0x54024, 0x16 },
+-	{ 0x5402b, 0x1000 },
+-	{ 0x5402c, 0x1 },
+-	{ 0x54032, 0x8400 },
+-	{ 0x54033, 0x3100 },
+-	{ 0x54034, 0x6600 },
+-	{ 0x54035, 0x4d },
+-	{ 0x54036, 0x4d },
+-	{ 0x54037, 0x1600 },
+-	{ 0x54038, 0x8400 },
+-	{ 0x54039, 0x3100 },
+-	{ 0x5403a, 0x6600 },
+-	{ 0x5403b, 0x4d },
+-	{ 0x5403c, 0x4d },
+-	{ 0x5403d, 0x1600 },
+-	{ 0xd0000, 0x1 },
+-};
+-
+-
+ /* P0 2D message block paremeter for training firmware */
+ struct dram_cfg_param ddr_fsp0_2d_cfg[] = {
+ 	{ 0xd0000, 0x0 },
+@@ -1703,14 +1482,6 @@ struct dram_cfg_param ddr_phy_pie[] = {
+ 	{ 0x2000c, 0xbb },
+ 	{ 0x2000d, 0x753 },
+ 	{ 0x2000e, 0x2c },
+-	{ 0x12000b, 0xc },
+-	{ 0x12000c, 0x19 },
+-	{ 0x12000d, 0xfa },
+-	{ 0x12000e, 0x10 },
+-	{ 0x22000b, 0x3 },
+-	{ 0x22000c, 0x6 },
+-	{ 0x22000d, 0x3e },
+-	{ 0x22000e, 0x10 },
+ 	{ 0x9000c, 0x0 },
+ 	{ 0x9000d, 0x173 },
+ 	{ 0x9000e, 0x60 },
+@@ -1721,28 +1492,12 @@ struct dram_cfg_param ddr_phy_pie[] = {
+ 	{ 0x90013, 0x6152 },
+ 	{ 0x20010, 0x5a },
+ 	{ 0x20011, 0x3 },
+-	{ 0x120010, 0x5a },
+-	{ 0x120011, 0x3 },
+-	{ 0x220010, 0x5a },
+-	{ 0x220011, 0x3 },
+ 	{ 0x40080, 0xe0 },
+ 	{ 0x40081, 0x12 },
+ 	{ 0x40082, 0xe0 },
+ 	{ 0x40083, 0x12 },
+ 	{ 0x40084, 0xe0 },
+ 	{ 0x40085, 0x12 },
+-	{ 0x140080, 0xe0 },
+-	{ 0x140081, 0x12 },
+-	{ 0x140082, 0xe0 },
+-	{ 0x140083, 0x12 },
+-	{ 0x140084, 0xe0 },
+-	{ 0x140085, 0x12 },
+-	{ 0x240080, 0xe0 },
+-	{ 0x240081, 0x12 },
+-	{ 0x240082, 0xe0 },
+-	{ 0x240083, 0x12 },
+-	{ 0x240084, 0xe0 },
+-	{ 0x240085, 0x12 },
+ 	{ 0x400fd, 0xf },
+ 	{ 0x10011, 0x1 },
+ 	{ 0x10012, 0x1 },
+@@ -1813,20 +1568,6 @@ struct dram_fsp_msg ddr_dram_fsp_msg[] = {
+ 		.fsp_cfg = ddr_fsp0_cfg,
+ 		.fsp_cfg_num = ARRAY_SIZE(ddr_fsp0_cfg),
+ 	},
+-	{
+-		/* P1 400mts 1D */
+-		.drate = 400,
+-		.fw_type = FW_1D_IMAGE,
+-		.fsp_cfg = ddr_fsp1_cfg,
+-		.fsp_cfg_num = ARRAY_SIZE(ddr_fsp1_cfg),
+-	},
+-	{
+-		/* P2 100mts 1D */
+-		.drate = 100,
+-		.fw_type = FW_1D_IMAGE,
+-		.fsp_cfg = ddr_fsp2_cfg,
+-		.fsp_cfg_num = ARRAY_SIZE(ddr_fsp2_cfg),
+-	},
+ 	{
+ 		/* P0 3000mts 2D */
+ 		.drate = 3000,
+@@ -1848,5 +1589,6 @@ struct dram_timing_info dram_timing = {
+ 	.ddrphy_trained_csr_num = ARRAY_SIZE(ddr_ddrphy_trained_csr),
+ 	.ddrphy_pie = ddr_phy_pie,
+ 	.ddrphy_pie_num = ARRAY_SIZE(ddr_phy_pie),
+-	.fsp_table = { 3000, 400, 100, },
++	.fsp_table = { 3000, },
+ };
++
+diff --git a/board/freescale/imx8mm_evk/spl.c b/board/freescale/imx8mm_evk/spl.c
+index c93fbd42ed..4723918ccd 100644
+--- a/board/freescale/imx8mm_evk/spl.c
++++ b/board/freescale/imx8mm_evk/spl.c
+@@ -38,9 +38,11 @@ DECLARE_GLOBAL_DATA_PTR;
+ int spl_board_boot_device(enum boot_device boot_dev_spl)
+ {
+ 	switch (boot_dev_spl) {
++	case SD1_BOOT:
++	case MMC1_BOOT:
++		return BOOT_DEVICE_MMC1;
+ 	case SD2_BOOT:
+ 	case MMC2_BOOT:
+-		return BOOT_DEVICE_MMC1;
+ 	case SD3_BOOT:
+ 	case MMC3_BOOT:
+ 		return BOOT_DEVICE_MMC2;
+@@ -75,24 +77,26 @@ struct i2c_pads_info i2c_pad_info1 = {
+ 	},
+ };
+ 
+-#define USDHC2_CD_GPIO	IMX_GPIO_NR(2, 18)
+-#define USDHC2_PWR_GPIO IMX_GPIO_NR(2, 19)
++#define USDHC1_RST_GPIO IMX_GPIO_NR(2, 10)
++#define USDHC2_CD_GPIO	IMX_GPIO_NR(2, 12)
+ 
+ #define USDHC_PAD_CTRL	(PAD_CTL_DSE6 | PAD_CTL_HYS | PAD_CTL_PUE |PAD_CTL_PE | \
+ 			 PAD_CTL_FSEL2)
+ #define USDHC_GPIO_PAD_CTRL (PAD_CTL_HYS | PAD_CTL_DSE1)
+ 
+-static iomux_v3_cfg_t const usdhc3_pads[] = {
+-	IMX8MM_PAD_NAND_WE_B_USDHC3_CLK | MUX_PAD_CTRL(USDHC_PAD_CTRL),
+-	IMX8MM_PAD_NAND_WP_B_USDHC3_CMD | MUX_PAD_CTRL(USDHC_PAD_CTRL),
+-	IMX8MM_PAD_NAND_DATA04_USDHC3_DATA0 | MUX_PAD_CTRL(USDHC_PAD_CTRL),
+-	IMX8MM_PAD_NAND_DATA05_USDHC3_DATA1 | MUX_PAD_CTRL(USDHC_PAD_CTRL),
+-	IMX8MM_PAD_NAND_DATA06_USDHC3_DATA2 | MUX_PAD_CTRL(USDHC_PAD_CTRL),
+-	IMX8MM_PAD_NAND_DATA07_USDHC3_DATA3 | MUX_PAD_CTRL(USDHC_PAD_CTRL),
+-	IMX8MM_PAD_NAND_RE_B_USDHC3_DATA4 | MUX_PAD_CTRL(USDHC_PAD_CTRL),
+-	IMX8MM_PAD_NAND_CE2_B_USDHC3_DATA5 | MUX_PAD_CTRL(USDHC_PAD_CTRL),
+-	IMX8MM_PAD_NAND_CE3_B_USDHC3_DATA6 | MUX_PAD_CTRL(USDHC_PAD_CTRL),
+-	IMX8MM_PAD_NAND_CLE_USDHC3_DATA7 | MUX_PAD_CTRL(USDHC_PAD_CTRL),
++static iomux_v3_cfg_t const usdhc1_pads[] = {
++	IMX8MM_PAD_SD1_CLK_USDHC1_CLK | MUX_PAD_CTRL(USDHC_PAD_CTRL),
++	IMX8MM_PAD_SD1_CMD_USDHC1_CMD | MUX_PAD_CTRL(USDHC_PAD_CTRL),
++	IMX8MM_PAD_SD1_STROBE_USDHC1_STROBE | MUX_PAD_CTRL(USDHC_PAD_CTRL),
++	IMX8MM_PAD_SD1_DATA0_USDHC1_DATA0 | MUX_PAD_CTRL(USDHC_PAD_CTRL),
++	IMX8MM_PAD_SD1_DATA1_USDHC1_DATA1 | MUX_PAD_CTRL(USDHC_PAD_CTRL),
++	IMX8MM_PAD_SD1_DATA2_USDHC1_DATA2 | MUX_PAD_CTRL(USDHC_PAD_CTRL),
++	IMX8MM_PAD_SD1_DATA3_USDHC1_DATA3 | MUX_PAD_CTRL(USDHC_PAD_CTRL),
++	IMX8MM_PAD_SD1_DATA4_USDHC1_DATA4 | MUX_PAD_CTRL(USDHC_PAD_CTRL),
++	IMX8MM_PAD_SD1_DATA5_USDHC1_DATA5 | MUX_PAD_CTRL(USDHC_PAD_CTRL),
++	IMX8MM_PAD_SD1_DATA6_USDHC1_DATA6 | MUX_PAD_CTRL(USDHC_PAD_CTRL),
++	IMX8MM_PAD_SD1_DATA7_USDHC1_DATA7 | MUX_PAD_CTRL(USDHC_PAD_CTRL),
++	IMX8MM_PAD_SD1_RESET_B_GPIO2_IO10 | MUX_PAD_CTRL(USDHC_GPIO_PAD_CTRL),
+ };
+ 
+ static iomux_v3_cfg_t const usdhc2_pads[] = {
+@@ -102,24 +106,12 @@ static iomux_v3_cfg_t const usdhc2_pads[] = {
+ 	IMX8MM_PAD_SD2_DATA1_USDHC2_DATA1 | MUX_PAD_CTRL(USDHC_PAD_CTRL),
+ 	IMX8MM_PAD_SD2_DATA2_USDHC2_DATA2 | MUX_PAD_CTRL(USDHC_PAD_CTRL),
+ 	IMX8MM_PAD_SD2_DATA3_USDHC2_DATA3 | MUX_PAD_CTRL(USDHC_PAD_CTRL),
+-	IMX8MM_PAD_SD2_RESET_B_GPIO2_IO19 | MUX_PAD_CTRL(USDHC_GPIO_PAD_CTRL),
++	IMX8MM_PAD_SD2_CD_B_USDHC2_CD_B | MUX_PAD_CTRL(USDHC_GPIO_PAD_CTRL),
+ };
+ 
+-/*
+- * The evk board uses DAT3 to detect CD card plugin,
+- * in u-boot we mux the pin to GPIO when doing board_mmc_getcd.
+- */
+-static iomux_v3_cfg_t const usdhc2_cd_pad =
+-	IMX8MM_PAD_SD2_DATA3_GPIO2_IO18 | MUX_PAD_CTRL(USDHC_GPIO_PAD_CTRL);
+-
+-static iomux_v3_cfg_t const usdhc2_dat3_pad =
+-	IMX8MM_PAD_SD2_DATA3_USDHC2_DATA3 |
+-	MUX_PAD_CTRL(USDHC_PAD_CTRL);
+-
+-
+ static struct fsl_esdhc_cfg usdhc_cfg[2] = {
++	{USDHC1_BASE_ADDR, 0, 8},
+ 	{USDHC2_BASE_ADDR, 0, 4},
+-	{USDHC3_BASE_ADDR, 0, 8},
+ };
+ 
+ int board_mmc_init(struct bd_info *bis)
+@@ -132,22 +124,23 @@ int board_mmc_init(struct bd_info *bis)
+ 	 * mmc1                    USDHC2
+ 	 */
+ 	for (i = 0; i < CONFIG_SYS_FSL_USDHC_NUM; i++) {
++
+ 		switch (i) {
+ 		case 0:
+-			init_clk_usdhc(1);
+-			usdhc_cfg[0].sdhc_clk = mxc_get_clock(MXC_ESDHC2_CLK);
++			init_clk_usdhc(0);
++			usdhc_cfg[0].sdhc_clk = mxc_get_clock(MXC_ESDHC_CLK);
+ 			imx_iomux_v3_setup_multiple_pads(
+-				usdhc2_pads, ARRAY_SIZE(usdhc2_pads));
+-			gpio_request(USDHC2_PWR_GPIO, "usdhc2_reset");
+-			gpio_direction_output(USDHC2_PWR_GPIO, 0);
++				usdhc1_pads, ARRAY_SIZE(usdhc1_pads));
++			gpio_request(USDHC1_RST_GPIO, "usdhc1_reset");
++			gpio_direction_output(USDHC1_RST_GPIO, 0);
+ 			udelay(500);
+-			gpio_direction_output(USDHC2_PWR_GPIO, 1);
++			gpio_direction_output(USDHC1_RST_GPIO, 1);
+ 			break;
+ 		case 1:
+-			init_clk_usdhc(2);
+-			usdhc_cfg[1].sdhc_clk = mxc_get_clock(MXC_ESDHC3_CLK);
++			init_clk_usdhc(1);
++			usdhc_cfg[1].sdhc_clk = mxc_get_clock(MXC_ESDHC2_CLK);
+ 			imx_iomux_v3_setup_multiple_pads(
+-				usdhc3_pads, ARRAY_SIZE(usdhc3_pads));
++				usdhc2_pads, ARRAY_SIZE(usdhc2_pads));
+ 			break;
+ 		default:
+ 			printf("Warning: you configured more USDHC controllers"
+@@ -169,21 +162,14 @@ int board_mmc_getcd(struct mmc *mmc)
+ 	int ret = 0;
+ 
+ 	switch (cfg->esdhc_base) {
+-	case USDHC3_BASE_ADDR:
++	case USDHC1_BASE_ADDR:
+ 		ret = 1;
+ 		break;
+ 	case USDHC2_BASE_ADDR:
+-		imx_iomux_v3_setup_pad(usdhc2_cd_pad);
++		break;
+ 		gpio_request(USDHC2_CD_GPIO, "usdhc2 cd");
+ 		gpio_direction_input(USDHC2_CD_GPIO);
+-
+-		/*
+-		 * Since it is the DAT3 pin, this pin is pulled to
+-		 * low voltage if no card
+-		 */
+ 		ret = gpio_get_value(USDHC2_CD_GPIO);
+-
+-		imx_iomux_v3_setup_pad(usdhc2_dat3_pad);
+ 		return ret;
+ 	}
+ 
+diff --git a/configs/imx8mm_evk_defconfig b/configs/imx8mm_evk_defconfig
+index ca1c4a268a..d2ce8989d8 100644
+--- a/configs/imx8mm_evk_defconfig
++++ b/configs/imx8mm_evk_defconfig
+@@ -21,10 +21,10 @@ CONFIG_SPL_MMC=y
+ CONFIG_SPL_SERIAL=y
+ CONFIG_SPL_DRIVERS_MISC=y
+ CONFIG_SPL=y
+-CONFIG_DEFAULT_DEVICE_TREE="imx8mm-evk"
++CONFIG_DEFAULT_DEVICE_TREE="imx8mm-mgqs"
+ CONFIG_CSF_SIZE=0x2000
+ CONFIG_DISTRO_DEFAULTS=y
+-CONFIG_BOOTCOMMAND="run distro_bootcmd;run bsp_bootcmd"
++CONFIG_BOOTCOMMAND="run loadimage;run mmcboot"
+ CONFIG_SYS_LOAD_ADDR=0x40400000
+ CONFIG_FIT=y
+ CONFIG_FIT_EXTERNAL_OFFSET=0x3000
+@@ -79,7 +79,7 @@ CONFIG_CMD_USB=y
+ CONFIG_CMD_USB_MASS_STORAGE=y
+ CONFIG_OF_CONTROL=y
+ CONFIG_ENV_OVERWRITE=y
+-CONFIG_DEFAULT_FDT_FILE="imx8mm-evk.dtb"
++CONFIG_DEFAULT_FDT_FILE="imx8mm-mgqs.dtb"
+ CONFIG_ENV_IS_IN_MMC=y
+ CONFIG_SYS_RELOC_GD_ENV_ADDR=y
+ CONFIG_SYS_MMC_ENV_DEV=1
+@@ -146,7 +146,7 @@ CONFIG_SYSRESET=y
+ CONFIG_SYSRESET_PSCI=y
+ CONFIG_DM_THERMAL=y
+ CONFIG_IMX_TMU=y
+-CONFIG_USB_TCPC=y
++CONFIG_USB_TCPC=n
+ CONFIG_USB=y
+ CONFIG_USB_GADGET=y
+ CONFIG_USB_STORAGE=y
+@@ -206,3 +206,8 @@ CONFIG_TEE=y
+ CONFIG_EFI_ESRT=y
+ CONFIG_EFI_HAVE_CAPSULE_UPDATE=y
+ CONFIG_FIT_SIGNATURE=y
++
++# CONFIG_CMD_BOOTMENU=y
++# CONFIG_AUTOBOOT_KEYED=y
++# CONFIG_BOOTDELAY=3
++# CONFIG_AUTOBOOT_MENU_SHOW=y
+diff --git a/configs/imx8mn_evk_defconfig b/configs/imx8mn_evk_defconfig
+index 20c2ff2a52..d615923c4d 100644
+--- a/configs/imx8mn_evk_defconfig
++++ b/configs/imx8mn_evk_defconfig
+@@ -17,7 +17,7 @@ CONFIG_SYS_I2C_MXC_I2C2=y
+ CONFIG_SYS_I2C_MXC_I2C3=y
+ CONFIG_DM_GPIO=y
+ CONFIG_SPL_TEXT_BASE=0x912000
+-CONFIG_USB_TCPC=y
++CONFIG_USB_TCPC=n
+ CONFIG_TARGET_IMX8MN_EVK=y
+ CONFIG_SPL_SERIAL=y
+ CONFIG_SPL_DRIVERS_MISC=y
+diff --git a/include/configs/imx8mm_evk.h b/include/configs/imx8mm_evk.h
+index 257ac79a1e..44a60ffd2a 100644
+--- a/include/configs/imx8mm_evk.h
++++ b/include/configs/imx8mm_evk.h
+@@ -29,11 +29,11 @@
+ /* For RAW image gives a error info not panic */
+ #define CONFIG_SPL_ABORT_ON_RAW_IMAGE
+ 
+-#if defined(CONFIG_IMX8M_LPDDR4) && defined(CONFIG_TARGET_IMX8MM_EVK)
+-#define CONFIG_POWER_PCA9450
+-#else
++//#if defined(CONFIG_IMX8M_LPDDR4) && defined(CONFIG_TARGET_IMX8MM_EVK)
++//#define CONFIG_POWER_PCA9450
++//#else
+ #define CONFIG_POWER_BD71837
+-#endif
++//#endif
+ 
+ #define CONFIG_SPL_NAND_BASE
+ #define CONFIG_SPL_NAND_IDENT
+@@ -68,9 +68,9 @@
+ 
+ #ifdef CONFIG_DISTRO_DEFAULTS
+ #define BOOT_TARGET_DEVICES(func) \
+-	func(USB, usb, 0) \
+ 	func(MMC, mmc, 1) \
+-	func(MMC, mmc, 2)
++	func(MMC, mmc, 0) \
++	func(USB, usb, 0)
+ 
+ #include <config_distro_bootcmd.h>
+ #else
+@@ -97,7 +97,7 @@
+ 	CONFIG_MFG_ENV_SETTINGS_DEFAULT \
+ 	"initrd_addr=0x43800000\0" \
+ 	"initrd_high=0xffffffffffffffff\0" \
+-	"emmc_dev=2\0"\
++	"emmc_dev=0\0"\
+ 	"sd_dev=1\0" \
+ 
+ /* Initial environment variables */
+@@ -186,7 +186,18 @@
+ 			   "else run netboot; " \
+ 			   "fi; " \
+ 		   "fi; " \
+-	   "fi;"
++	   "fi;\0" \
++	"bspboot=echo Booting BSP ...;" \
++		"setenv mmcroot '/dev/mmcblk1p2 rootwait rw';" \
++		"run bootcmd\0" \
++	"ubuntuboot=echo Booting Ubuntu ...;" \
++		"setenv mmcroot '/dev/mmcblk1p3 rootwait rw';" \
++		"run bootcmd\0" \
++	"menucmd=bootmenu\0" \
++	"bootmenu_0=Ubuntu 20.04=run ubuntuboot\0" \
++	"bootmenu_1=BSP LF_v5.10.72-2.2.0=run bspboot\0" \
++	"bootmenu_delay=3\0" \
++	""
+ #endif
+ 
+ /* Link Definitions */
