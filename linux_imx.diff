@@ -1,48 +1,1922 @@
-commit fa6c3168595c02bd9d5366fcc28c9e7304947a3d
-Author: Ioana Ciornei <ioana.ciornei@nxp.com>
-Date:   Tue May 24 15:07:31 2022 +0300
-
-    dpaa2-eth: increase busy retries when interracting with QBMAN
-    
-    It seems that there are circumstances when access to QBMAN through the
-    software portals will be delayed. Accessing some lower speeds interfaces
-    while also QBMAN commands are issued from the kernel will lead to
-    software timeouts happening in the dpaa2-eth driver.
-    
-    What we have observed is that management commands like re-arming the
-    interrupts on a specific channel, waiting for a dequeue response to be
-    available etc, will take a longer time to complete.
-    All these commands have to wait for a valid bit to be set for the
-    command to be interpreted as successfully completed.
-    
-    Increase the maximum number of times the Linux kernel drivers will busy
-    poll for a successful result of one of these commands.
-    
-    Signed-off-by: Ioana Ciornei <ioana.ciornei@nxp.com>
-
-diff --git a/drivers/net/ethernet/freescale/dpaa2/dpaa2-eth.h b/drivers/net/ethernet/freescale/dpaa2/dpaa2-eth.h
-index a57f95cac6a7..baa13f948aec 100644
---- a/drivers/net/ethernet/freescale/dpaa2/dpaa2-eth.h
-+++ b/drivers/net/ethernet/freescale/dpaa2/dpaa2-eth.h
-@@ -354,7 +354,7 @@ static inline struct dpaa2_faead *dpaa2_get_faead(void *buf_addr, bool swa)
-  * hardware becomes unresponsive, but not give up too easily if
-  * the portal really is busy for valid reasons
-  */
--#define DPAA2_ETH_SWP_BUSY_RETRIES	1000
-+#define DPAA2_ETH_SWP_BUSY_RETRIES	10000
+diff --git a/arch/arm64/boot/dts/freescale/Makefile b/arch/arm64/boot/dts/freescale/Makefile
+index b7060bfe3af0..ea92fe59cb65 100644
+--- a/arch/arm64/boot/dts/freescale/Makefile
++++ b/arch/arm64/boot/dts/freescale/Makefile
+@@ -70,7 +70,7 @@ dtb-$(CONFIG_ARCH_MXC) += imx8mm-evk.dtb imx8mm-evk-rpmsg.dtb imx8mm-evk-rm67191
+ 			  imx8mm-evk-qca-wifi.dtb \
+ 			  imx8mm-evk-dpdk.dtb \
+ 			  imx8mm-evk-rm67199.dtb imx8mm-evk-rm67191-cmd-ram.dtb imx8mm-evk-rm67199-cmd-ram.dtb \
+-			  imx8mm-evk-lk.dtb imx8mm-evk-rpmsg-wm8524-lpv.dtb
++			  imx8mm-evk-lk.dtb imx8mm-evk-rpmsg-wm8524-lpv.dtb imx8mm-mgqs.dtb imx8mm-mgqs-pcie.dtb
+ dtb-$(CONFIG_ARCH_MXC) += imx8mm-evk-rpmsg-wm8524.dtb
+ dtb-$(CONFIG_ARCH_MXC) += imx8mm-evk-ak4497.dtb imx8mm-evk-ak5558.dtb imx8mm-evk-audio-tdm.dtb
+ dtb-$(CONFIG_ARCH_MXC) += imx8mm-evk-8mic-revE.dtb imx8mm-evk-8mic-swpdm.dtb \
+diff --git a/arch/arm64/boot/dts/freescale/imx8mm-mgqs-pcie.dts b/arch/arm64/boot/dts/freescale/imx8mm-mgqs-pcie.dts
+new file mode 100644
+index 000000000000..867789e62fa2
+--- /dev/null
++++ b/arch/arm64/boot/dts/freescale/imx8mm-mgqs-pcie.dts
+@@ -0,0 +1,16 @@
++// SPDX-License-Identifier: GPL-2.0+
++/*
++ * Copyright 2020 NXP
++ */
++
++/dts-v1/;
++
++#include "imx8mm-mgqs.dts"
++
++&pcie0{
++	status = "disabled";
++};
++
++&pcie0_ep{
++	status = "disabled";
++};
+diff --git a/arch/arm64/boot/dts/freescale/imx8mm-mgqs.dts b/arch/arm64/boot/dts/freescale/imx8mm-mgqs.dts
+new file mode 100644
+index 000000000000..aa82fede6940
+--- /dev/null
++++ b/arch/arm64/boot/dts/freescale/imx8mm-mgqs.dts
+@@ -0,0 +1,545 @@
++/dts-v1/;
++
++#include "imx8mm-evk.dts"
++#include <dt-bindings/net/ti-dp83867.h>
++
++/ {
++	model = "NXP i.MX8MM MGQS_CARRIER_VER1 board";
++	compatible = "fsl,imx8mm-evk", "fsl,imx8mm";
++
++	/delete-node/ ir-receiver;
++	/delete-node/ audio-codec;
++	/delete-node/ sound-wm8524;
++	/delete-node/ leds;
++	/delete-node/ sound-ak4458;
++	/delete-node/ sound-ak5558;
++	/delete-node/ sound-ak4497;
++	/delete-node/ regulator-audio-board;
++
++	esp32_gpios {
++		compatible = "gpio-leds";
++		pinctrl-names = "default";
++		pinctrl-0 = <&pinctrl_gpio_esp32>;
++
++		power_up {
++			label = "esp32_power_up";
++			gpio = <&gpio4 31 GPIO_ACTIVE_HIGH>;
++			default-state = "on";
++		};
++
++		boot_opt {
++			label = "esp32_boot_opt";
++			gpio = <&gpio4 28 GPIO_ACTIVE_HIGH>;
++			default-state = "on";
++		};
++	};
++
++	pcie0_refclk: pcie0-refclk {
++		compatible = "fixed-clock";
++		#clock-cells = <0>;
++		clock-frequency = <100000000>;
++	};
++
++	reg_usb_otg1_vbus: regulator-usb-otg1 {
++		compatible = "regulator-fixed";
++		enable-active-high;
++		/* USB1_PWR_EN */
++		gpio = <&gpio1 12 GPIO_ACTIVE_HIGH>;
++		pinctrl-names = "default";
++		pinctrl-0 = <&pinctrl_reg_usb1_en>;
++		regulator-name = "usb_otg1_vbus";
++		regulator-min-microvolt = <5000000>;
++		regulator-max-microvolt = <5000000>;
++	};
++};
++
++&lcdif {
++       status = "okay";
++};
++
++&spdif1 {
++	status = "disabled";
++};
++
++&sai2 {
++	status = "disabled";
++};
++
++/* eMMC */
++&usdhc1 {
++	bus-width = <8>;
++	keep-power-in-suspend;
++	non-removable;
++	pinctrl-names = "default", "state_100mhz", "state_200mhz";
++	pinctrl-0 = <&pinctrl_usdhc1>;
++	pinctrl-1 = <&pinctrl_usdhc1_100mhz>;
++	pinctrl-2 = <&pinctrl_usdhc1_200mhz>;
++	pm-ignore-notify;
++	status = "okay";
++	/* TODO Strobe */
++};
++
++/* uSD */
++&usdhc2 {
++	cd-gpios = <&gpio2 12 GPIO_ACTIVE_LOW>;
++	pinctrl-0 = <&pinctrl_usdhc22>, <&pinctrl_usdhc22_cd>;
++	pinctrl-1 = <&pinctrl_usdhc22_100mhz>, <&pinctrl_usdhc22_cd>;
++	pinctrl-2 = <&pinctrl_usdhc22_200mhz>, <&pinctrl_usdhc22_cd>;
++	/delete-property/ vmmc-supply ;
++};
++
++&usdhc3 {
++	status = "disabled";
++};
++
++/* USB-C */
++&usbotg1 {
++	dr_mode = "peripheral";
++	/*vbus-supply = <&reg_usb_otg1_vbus>;*/
++	/delete-property/ usb-role-switch;
++	/delete-node/ port;
++};
++
++/* USB-Host */
++&usbotg2 {
++	dr_mode = "host";
++	srp-disable;
++	hnp-disable;
++	adp-disable;
++	disable-over-current;
++	/delete-property/ usb-role-switch;
++	/*
++	 * FIXME: having USB2 enabled hangs the boot just after:
++	 * [    1.943365] ci_hdrc ci_hdrc.1: EHCI Host Controller
++	 * [    1.948287] ci_hdrc ci_hdrc.1: new USB bus registered, assigned bus number 1
++	 * [    1.971006] ci_hdrc ci_hdrc.1: USB 2.0 started, EHCI 1.00
++	 * [    1.977203] hub 1-0:1.0: USB hub found
++	 * [    1.980987] hub 1-0:1.0: 1 port detected
++	 */
++	status = "ok";
++};
++
++&fec1 {
++	phy-mode = "rgmii-id";
++};
++
++&ethphy0 { 
++	/*interrupt-parent = <&gpio1>;*/
++	/*interrupts = <11 IRQ_TYPE_LEVEL_LOW>;*/
++	/*reset-gpios = <&gpio1 11 GPIO_ACTIVE_LOW>;*/
++	/*reset-assert-us = <10000>;*/
++	/delete-property/ reset-gpios;
++	/delete-property/ reset-assert-us;
++	reg = <0>;
++	ti,rx-internal-delay = <DP83867_RGMIIDCTL_2_00_NS>;
++	ti,tx-internal-delay = <DP83867_RGMIIDCTL_2_00_NS>;
++	tx-fifo-depth = <DP83867_PHYCR_FIFO_DEPTH_4_B_NIB>;
++	rx-fifo-depth = <DP83867_PHYCR_FIFO_DEPTH_4_B_NIB>;
++};
++
++/*
++&pcie0 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pinctrl_pcie0>;
++	clocks = <&clk IMX8MM_CLK_PCIE1_ROOT>,
++		 <&clk IMX8MM_CLK_PCIE1_AUX>,
++		 <&clk IMX8MM_CLK_PCIE1_PHY>,
++		 <&pcie0_refclk>;
++	clock-names = "pcie", "pcie_aux", "pcie_phy", "pcie_bus";
++	assigned-clocks = <&clk IMX8MM_CLK_PCIE1_AUX>,
++			  <&clk IMX8MM_CLK_PCIE1_PHY>,
++			  <&clk IMX8MM_CLK_PCIE1_CTRL>;
++	assigned-clock-rates = <10000000>, <100000000>, <250000000>;
++	assigned-clock-parents = <&clk IMX8MM_SYS_PLL2_50M>,
++				 <&clk IMX8MM_SYS_PLL2_100M>,
++				 <&clk IMX8MM_SYS_PLL2_250M>;
++	ext_osc = <1>;
++	status = "disabled";
++};
++
++&pcie0_ep {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pinctrl_pcie0>;
++	clocks = <&clk IMX8MM_CLK_PCIE1_ROOT>,
++		 <&clk IMX8MM_CLK_PCIE1_AUX>,
++		 <&clk IMX8MM_CLK_PCIE1_PHY>,
++		 <&pcie0_refclk>;
++	clock-names = "pcie", "pcie_aux", "pcie_phy", "pcie_bus";
++	assigned-clocks = <&clk IMX8MM_CLK_PCIE1_AUX>,
++			  <&clk IMX8MM_CLK_PCIE1_PHY>,
++			  <&clk IMX8MM_CLK_PCIE1_CTRL>;
++	assigned-clock-rates = <10000000>, <100000000>, <250000000>;
++	assigned-clock-parents = <&clk IMX8MM_SYS_PLL2_50M>,
++				 <&clk IMX8MM_SYS_PLL2_100M>,
++				 <&clk IMX8MM_SYS_PLL2_250M>;
++	ext_osc = <1>;
++	l1ss-disabled;
++	status = "okay";
++};
++*/
++
++/* esp32 */
++&uart1 {
++	/delete-property/ dmas;
++	/delete-property/ dma-names;
++
++	pinctrl-names = "default";
++	pinctrl-0 = <&pinctrl_uart1>;
++	/*assigned-clocks = <&clk IMX8MM_CLK_UART1>;
++	assigned-clock-parents = <&clk IMX8MM_SYS_PLL1_80M>;*/
++	status = "okay";
++};
++
++&uart3 {
++	/delete-property/ dmas;
++	/delete-property/ dma-names;
++
++	pinctrl-names = "default";
++	pinctrl-0 = <&pinctrl_uart3>;
++	/*assigned-clocks = <&clk IMX8MM_CLK_UART3>;
++	assigned-clock-parents = <&clk IMX8MM_SYS_PLL1_80M>;*/
++	status = "okay";
++};
++
++/*M4 assigned*/
++&uart4 {
++	pinctrl-names = "default";
++	status = "disabled";
++};
++
++&i2c4 {
++	clock-frequency = <100000>;
++	pinctrl-names = "default";
++	pinctrl-0 = <&pinctrl_i2c4>;
++	status = "okay";
++    eeprom@64 {
++        status = "okay";
++        compatible = "linux,slave-24c02";
++        reg = <0x40000064>;
++    };
++};
++
++&sai3 {
++	status = "disabled";
++};
++
++&ecspi2 {
++	status = "disabled";
++};
++
++&ecspi1 {
++	#address-cells = <1>;
++	#size-cells = <0>;
++	fsl,spi-num-chipselects = <1>;
++	pinctrl-names = "default";
++	pinctrl-0 = <&pinctrl_ecspi1 &pinctrl_ecspi1_cs>;
++	status = "disabled";
++	spi-slave;
++
++};
++
++&iomuxc {
++	
++	pinctrl_ecspi1: ecspi1grp {
++		fsl,pins = <
++			MX8MM_IOMUXC_ECSPI1_SCLK_ECSPI1_SCLK		0x82
++			MX8MM_IOMUXC_ECSPI1_MOSI_ECSPI1_MOSI		0x82
++			MX8MM_IOMUXC_ECSPI1_MISO_ECSPI1_MISO		0x82
++		>;
++	};
++
++	pinctrl_ecspi1_cs: ecspi1cs {
++		fsl,pins = <
++			MX8MM_IOMUXC_ECSPI1_SS0_GPIO5_IO9		0x82
++		>;
++	};
++
++	pinctrl_reg_usb1_en: regusb1engrp {
++		fsl,pins = <
++			MX8MM_IOMUXC_GPIO1_IO12_GPIO1_IO12	0x184		/* SODIMM 155 */
++		>;
++	};
++
++	pinctrl_pcie0: pcie0grp {
++		fsl,pins = <
++			MX8MM_IOMUXC_UART4_RXD_PCIE1_CLKREQ_B	0x61 /* open drain, pull up */
++		>;
++	};
++
++	pinctrl_usdhc1: usdhc1grp {
++		fsl,pins = <
++			MX8MM_IOMUXC_SD1_CLK_USDHC1_CLK		0x190
++			MX8MM_IOMUXC_SD1_CMD_USDHC1_CMD		0x1d0
++			MX8MM_IOMUXC_SD1_DATA0_USDHC1_DATA0	0x1d0
++			MX8MM_IOMUXC_SD1_DATA1_USDHC1_DATA1	0x1d0
++			MX8MM_IOMUXC_SD1_DATA2_USDHC1_DATA2	0x1d0
++			MX8MM_IOMUXC_SD1_DATA3_USDHC1_DATA3	0x1d0
++			MX8MM_IOMUXC_SD1_DATA4_USDHC1_DATA4	0x1d0
++			MX8MM_IOMUXC_SD1_DATA5_USDHC1_DATA5	0x1d0
++			MX8MM_IOMUXC_SD1_DATA6_USDHC1_DATA6	0x1d0
++			MX8MM_IOMUXC_SD1_DATA7_USDHC1_DATA7	0x1d0
++			MX8MM_IOMUXC_SD1_STROBE_USDHC1_STROBE	0x190
++		>;
++	};
++
++	pinctrl_usdhc1_100mhz: usdhc1grp100mhz {
++		fsl,pins = <
++			MX8MM_IOMUXC_SD1_CLK_USDHC1_CLK		0x194
++			MX8MM_IOMUXC_SD1_CMD_USDHC1_CMD		0x1d4
++			MX8MM_IOMUXC_SD1_DATA0_USDHC1_DATA0	0x1d4
++			MX8MM_IOMUXC_SD1_DATA1_USDHC1_DATA1	0x1d4
++			MX8MM_IOMUXC_SD1_DATA2_USDHC1_DATA2	0x1d4
++			MX8MM_IOMUXC_SD1_DATA3_USDHC1_DATA3	0x1d4
++			MX8MM_IOMUXC_SD1_DATA4_USDHC1_DATA4	0x1d4
++			MX8MM_IOMUXC_SD1_DATA5_USDHC1_DATA5	0x1d4
++			MX8MM_IOMUXC_SD1_DATA6_USDHC1_DATA6	0x1d4
++			MX8MM_IOMUXC_SD1_DATA7_USDHC1_DATA7	0x1d4
++			MX8MM_IOMUXC_SD1_STROBE_USDHC1_STROBE	0x194
++		>;
++	};
++
++	pinctrl_usdhc1_200mhz: usdhc1grp200mhz {
++		fsl,pins = <
++			MX8MM_IOMUXC_SD1_CLK_USDHC1_CLK		0x196
++			MX8MM_IOMUXC_SD1_CMD_USDHC1_CMD		0x1d6
++			MX8MM_IOMUXC_SD1_DATA0_USDHC1_DATA0	0x1d6
++			MX8MM_IOMUXC_SD1_DATA1_USDHC1_DATA1	0x1d6
++			MX8MM_IOMUXC_SD1_DATA2_USDHC1_DATA2	0x1d6
++			MX8MM_IOMUXC_SD1_DATA3_USDHC1_DATA3	0x1d6
++			MX8MM_IOMUXC_SD1_DATA4_USDHC1_DATA4	0x1d6
++			MX8MM_IOMUXC_SD1_DATA5_USDHC1_DATA5	0x1d6
++			MX8MM_IOMUXC_SD1_DATA6_USDHC1_DATA6	0x1d6
++			MX8MM_IOMUXC_SD1_DATA7_USDHC1_DATA7	0x1d6
++			MX8MM_IOMUXC_SD1_STROBE_USDHC1_STROBE	0x196
++		>;
++	};
++
++	pinctrl_usdhc22_cd: usdhc2cdgrp {
++		fsl,pins = <
++			MX8MM_IOMUXC_SD2_CD_B_GPIO2_IO12	0x1c4		/* SODIMM 84 */
++		>;
++	};
++
++	pinctrl_usdhc22: usdhc2grp {
++		fsl,pins = <
++			MX8MM_IOMUXC_SD2_CLK_USDHC2_CLK		0x190
++			MX8MM_IOMUXC_SD2_CMD_USDHC2_CMD		0x1d0
++			MX8MM_IOMUXC_SD2_DATA0_USDHC2_DATA0	0x1d0
++			MX8MM_IOMUXC_SD2_DATA1_USDHC2_DATA1	0x1d0
++			MX8MM_IOMUXC_SD2_DATA2_USDHC2_DATA2	0x1d0
++			MX8MM_IOMUXC_SD2_DATA3_USDHC2_DATA3	0x1d0
++		>;
++	};
++
++	pinctrl_usdhc22_100mhz: usdhc2-100mhzgrp {
++		fsl,pins = <
++			MX8MM_IOMUXC_SD2_CLK_USDHC2_CLK		0x194
++			MX8MM_IOMUXC_SD2_CMD_USDHC2_CMD		0x1d4
++			MX8MM_IOMUXC_SD2_DATA0_USDHC2_DATA0	0x1d4
++			MX8MM_IOMUXC_SD2_DATA1_USDHC2_DATA1	0x1d4
++			MX8MM_IOMUXC_SD2_DATA2_USDHC2_DATA2	0x1d4
++			MX8MM_IOMUXC_SD2_DATA3_USDHC2_DATA3	0x1d4
++		>;
++	};
++
++	pinctrl_usdhc22_200mhz: usdhc2-200mhzgrp {
++		fsl,pins = <
++			MX8MM_IOMUXC_SD2_CLK_USDHC2_CLK		0x196
++			MX8MM_IOMUXC_SD2_CMD_USDHC2_CMD		0x1d6
++			MX8MM_IOMUXC_SD2_DATA0_USDHC2_DATA0	0x1d6
++			MX8MM_IOMUXC_SD2_DATA1_USDHC2_DATA1	0x1d6
++			MX8MM_IOMUXC_SD2_DATA2_USDHC2_DATA2	0x1d6
++			MX8MM_IOMUXC_SD2_DATA3_USDHC2_DATA3	0x1d6
++		>;
++	};
++
++	pinctrl_fec1: fec1grp {
++		fsl,pins = <
++			MX8MM_IOMUXC_ENET_MDC_ENET1_MDC			0x3
++			MX8MM_IOMUXC_ENET_MDIO_ENET1_MDIO		0x3
++			MX8MM_IOMUXC_ENET_TD3_ENET1_RGMII_TD3		0x1f
++			MX8MM_IOMUXC_ENET_TD2_ENET1_RGMII_TD2		0x1f
++			MX8MM_IOMUXC_ENET_TD1_ENET1_RGMII_TD1		0x1f
++			MX8MM_IOMUXC_ENET_TD0_ENET1_RGMII_TD0		0x1f
++			MX8MM_IOMUXC_ENET_RD3_ENET1_RGMII_RD3		0x91
++			MX8MM_IOMUXC_ENET_RD2_ENET1_RGMII_RD2		0x91
++			MX8MM_IOMUXC_ENET_RD1_ENET1_RGMII_RD1		0x91
++			MX8MM_IOMUXC_ENET_RD0_ENET1_RGMII_RD0		0x91
++			MX8MM_IOMUXC_ENET_TXC_ENET1_RGMII_TXC		0x1f
++			MX8MM_IOMUXC_ENET_RXC_ENET1_RGMII_RXC		0x91
++			MX8MM_IOMUXC_ENET_RX_CTL_ENET1_RGMII_RX_CTL	0x91
++			MX8MM_IOMUXC_ENET_TX_CTL_ENET1_RGMII_TX_CTL	0x1f
++		>;
++	};
++
++	pinctrl_gpio_esp32: regespgrp {
++		fsl,pins = <
++			MX8MM_IOMUXC_GPIO1_IO00_GPIO1_IO0		0x19
++			MX8MM_IOMUXC_SAI3_TXFS_GPIO4_IO31		0x19
++			MX8MM_IOMUXC_SAI3_RXFS_GPIO4_IO28		0x19
++			MX8MM_IOMUXC_GPIO1_IO05_GPIO1_IO5		0x19
++			MX8MM_IOMUXC_SAI2_RXFS_GPIO4_IO21		0x41
++			MX8MM_IOMUXC_GPIO1_IO04_GPIO1_IO4		0x19
++			MX8MM_IOMUXC_GPIO1_IO11_GPIO1_IO11		0x19
++			MX8MM_IOMUXC_GPIO1_IO13_GPIO1_IO13		0x19
++		>;
++	};
++
++	pinctrl_uart1: uart1grp {
++		fsl,pins = <
++			MX8MM_IOMUXC_UART1_RXD_UART1_DCE_RX     	0x140
++			MX8MM_IOMUXC_UART1_TXD_UART1_DCE_TX     	0x140
++		>;
++	};
++
++	pinctrl_uart3: uart3grp {
++		fsl,pins = <
++			MX8MM_IOMUXC_UART3_RXD_UART3_DCE_RX		0x140
++			MX8MM_IOMUXC_UART3_TXD_UART3_DCE_TX		0x140
++		>;
++	};
++
++	pinctrl_i2c4: i2c4grp {
++		fsl,pins = <
++			MX8MM_IOMUXC_I2C4_SCL_I2C4_SCL			0x400001c3
++			MX8MM_IOMUXC_I2C4_SDA_I2C4_SDA			0x400001c3
++		>;
++	};
++};
++
++&i2c1 {
++
++	/delete-node/ pmic_nxp;
++	/delete-node/ pca9450@25;
++
++	pmic: pmic@4b {
++		compatible = "rohm,bd71847";
++		reg = <0x4b>;
++		pinctrl-0 = <&pinctrl_pmic>;
++		interrupt-parent = <&gpio1>;
++		interrupts = <3 GPIO_ACTIVE_LOW>;
++		rohm,reset-snvs-powered;
++
++		regulators {
++			buck1_reg: BUCK1 {
++				regulator-name = "BUCK1";
++				regulator-min-microvolt = <700000>;
++				regulator-max-microvolt = <1300000>;
++				regulator-boot-on;
++				regulator-always-on;
++				regulator-ramp-delay = <1250>;
++			};
++
++			buck2_reg: BUCK2 {
++				regulator-name = "BUCK2";
++				regulator-min-microvolt = <700000>;
++				regulator-max-microvolt = <1300000>;
++				regulator-boot-on;
++				regulator-always-on;
++				regulator-ramp-delay = <1250>;
++				rohm,dvs-run-voltage = <1000000>;
++				rohm,dvs-idle-voltage = <900000>;
++			};
++
++			buck3_reg: BUCK3 {
++				// BUCK5 in datasheet
++				regulator-name = "BUCK3";
++				regulator-min-microvolt = <700000>;
++				regulator-max-microvolt = <1350000>;
++				regulator-boot-on;
++				regulator-always-on;
++			};
++
++			buck4_reg: BUCK4 {
++				// BUCK6 in datasheet
++				regulator-name = "BUCK4";
++				regulator-min-microvolt = <3000000>;
++				regulator-max-microvolt = <3300000>;
++				regulator-boot-on;
++				regulator-always-on;
++			};
++
++			buck5_reg: BUCK5 {
++				// BUCK7 in datasheet
++				regulator-name = "BUCK5";
++				regulator-min-microvolt = <1605000>;
++				regulator-max-microvolt = <1995000>;
++				regulator-boot-on;
++				regulator-always-on;
++			};
++
++			buck6_reg: BUCK6 {
++				// BUCK8 in datasheet
++				regulator-name = "BUCK6";
++				regulator-min-microvolt = <800000>;
++				regulator-max-microvolt = <1400000>;
++				regulator-boot-on;
++				regulator-always-on;
++			};
++
++			ldo1_reg: LDO1 {
++				regulator-name = "LDO1";
++				regulator-min-microvolt = <3000000>;
++				regulator-max-microvolt = <3300000>;
++				regulator-boot-on;
++				regulator-always-on;
++			};
++
++			ldo2_reg: LDO2 {
++				regulator-name = "LDO2";
++				regulator-min-microvolt = <900000>;
++				regulator-max-microvolt = <900000>;
++				regulator-boot-on;
++				regulator-always-on;
++			};
++
++			ldo3_reg: LDO3 {
++				regulator-name = "LDO3";
++				regulator-min-microvolt = <1800000>;
++				regulator-max-microvolt = <3300000>;
++				regulator-boot-on;
++				regulator-always-on;
++			};
++
++			ldo4_reg: LDO4 {
++				regulator-name = "LDO4";
++				regulator-min-microvolt = <900000>;
++				regulator-max-microvolt = <1800000>;
++				regulator-boot-on;
++				regulator-always-on;
++			};
++
++			ldo6_reg: LDO6 {
++				regulator-name = "LDO6";
++				regulator-min-microvolt = <900000>;
++				regulator-max-microvolt = <1800000>;
++				regulator-boot-on;
++				regulator-always-on;
++			};
++		};
++	};
++};
++
++&spdif1 {
++	status = "disabled";
++};
++
++&i2c2 {
++
++	/delete-node/ tcpc@50;
++};
++
++&i2c3 {
++	/delete-node/ gpio@20;
++	/delete-node/ ak4458@10;
++	/delete-node/ ak4458@12;
++	/delete-node/ ak5558@13;
++	/delete-node/ ak4497@11;
++};
++
++
++&flexspi {
++	status = "disabled";
++
++	/delete-node/ flash@0;
++};
+diff --git a/arch/arm64/configs/imx_v8_defconfig b/arch/arm64/configs/imx_v8_defconfig
+index 74dc82cb4dde..450c7355221d 100644
+--- a/arch/arm64/configs/imx_v8_defconfig
++++ b/arch/arm64/configs/imx_v8_defconfig
+@@ -238,7 +238,7 @@ CONFIG_VIRTIO_BLK=y
+ CONFIG_BLK_DEV_NVME=y
+ CONFIG_SRAM=y
+ CONFIG_PCI_ENDPOINT_TEST=y
+-CONFIG_EEPROM_AT24=m
++CONFIG_EEPROM_AT24=y
+ CONFIG_EEPROM_AT25=m
+ CONFIG_UACCE=m
+ # CONFIG_SCSI_PROC_FS is not set
+@@ -1048,3 +1048,7 @@ CONFIG_TRUSTED_KEYS=m
+ CONFIG_TRUSTED_KEYS_TPM=n
+ CONFIG_TRUSTED_KEYS_TEE=n
+ CONFIG_TRUSTED_KEYS_CAAM=y
++
++CONFIG_DP83867_PHY=y
++CONFIG_VIDEO_TEVI_AP1302=m
++// CONFIG_I2C_SLAVE_EEPROM=y
+diff --git a/drivers/media/i2c/Kconfig b/drivers/media/i2c/Kconfig
+index 6157e73eef24..ee1bc38eb80e 100644
+--- a/drivers/media/i2c/Kconfig
++++ b/drivers/media/i2c/Kconfig
+@@ -1390,6 +1390,17 @@ config VIDEO_S5C73M3
+ 	  This is a V4L2 sensor driver for Samsung S5C73M3
+ 	  8 Mpixel camera.
  
- /* Driver statistics, other than those in struct rtnl_link_stats64.
-  * These are usually collected per-CPU and aggregated by ethtool.
-diff --git a/drivers/soc/fsl/dpio/qbman-portal.h b/drivers/soc/fsl/dpio/qbman-portal.h
-index b89f93ee6f7e..e40b3fa58f40 100644
---- a/drivers/soc/fsl/dpio/qbman-portal.h
-+++ b/drivers/soc/fsl/dpio/qbman-portal.h
-@@ -543,7 +543,7 @@ static inline int qbman_swp_CDAN_set_context_enable(struct qbman_swp *s,
- static inline void *qbman_swp_mc_complete(struct qbman_swp *swp, void *cmd,
- 					  u8 cmd_verb)
++config VIDEO_TEVI_AP1302
++	tristate "TechNexion TEVI-AP1302 sensor support"
++	depends on OF
++	depends on GPIOLIB && VIDEO_V4L2 && I2C && VIDEO_V4L2_SUBDEV_API
++	depends on MEDIA_CAMERA_SUPPORT
++	default y
++	select V4L2_FWNODE
++	help
++	  This is a Video4Linux2 sensor driver for the TechNexion
++	  TEVI-AP1302 camera sensor with a MIPI CSI-2 interface.
++
+ endmenu
+ 
+ menu "Lens drivers"
+diff --git a/drivers/media/i2c/Makefile b/drivers/media/i2c/Makefile
+index 83268f20aa3a..884fe7be1564 100644
+--- a/drivers/media/i2c/Makefile
++++ b/drivers/media/i2c/Makefile
+@@ -134,3 +134,4 @@ obj-$(CONFIG_VIDEO_RDACM20)	+= rdacm20.o
+ obj-$(CONFIG_VIDEO_RDACM21)	+= rdacm21.o
+ obj-$(CONFIG_VIDEO_ST_MIPID02) += st-mipid02.o
+ obj-$(CONFIG_SDR_MAX2175) += max2175.o
++obj-$(CONFIG_VIDEO_TEVI_AP1302) += tevi-ap1302/
+diff --git a/drivers/media/i2c/tevi-ap1302/Makefile b/drivers/media/i2c/tevi-ap1302/Makefile
+new file mode 100644
+index 000000000000..e5877b8d8dfd
+--- /dev/null
++++ b/drivers/media/i2c/tevi-ap1302/Makefile
+@@ -0,0 +1,3 @@
++tevi_ap1302-objs := main.o otp_flash.o
++
++obj-$(CONFIG_VIDEO_TEVI_AP1302) += tevi_ap1302.o
+diff --git a/drivers/media/i2c/tevi-ap1302/main.c b/drivers/media/i2c/tevi-ap1302/main.c
+new file mode 100644
+index 000000000000..efc6ad9606df
+--- /dev/null
++++ b/drivers/media/i2c/tevi-ap1302/main.c
+@@ -0,0 +1,889 @@
++#include <linux/module.h>
++#include <linux/delay.h>
++#include <linux/kthread.h>
++#include <linux/i2c.h>
++#include <linux/init.h>
++#include <media/v4l2-async.h>
++#include <media/v4l2-ctrls.h>
++#include <media/v4l2-device.h>
++#include <media/v4l2-event.h>
++#include <media/v4l2-fwnode.h>
++#include <media/v4l2-subdev.h>
++#include "sensor_tbls.h"
++#include "otp_flash.h"
++
++struct sensor {
++	struct v4l2_subdev v4l2_subdev;
++	struct media_pad pad;
++	struct v4l2_mbus_framefmt fmt;
++	struct i2c_client *i2c_client;
++	struct otp_flash *otp_flash_instance;
++	struct gpio_desc *reset_gpio;
++	struct gpio_desc *host_power_gpio;
++	struct gpio_desc *device_power_gpio;
++	struct gpio_desc *standby_gpio;
++	u8 selected_mode;
++	u8 selected_sensor;
++	bool supports_over_4k_res;
++	char *sensor_name;
++};
++
++static int sensor_standby(struct i2c_client *client, int enable);
++
++static int sensor_i2c_read(struct i2c_client *client, u16 reg, u8 *val, u8 size)
++{
++	struct i2c_msg msg[2];
++	u8 buf[2];
++
++	buf[0] = reg >> 8;
++	buf[1] = reg & 0xff;
++
++	msg[0].addr = client->addr;
++	msg[0].flags = client->flags;
++	msg[0].buf = buf;
++	msg[0].len = sizeof(buf);
++
++	msg[1].addr = client->addr;
++	msg[1].flags = client->flags | I2C_M_RD;
++	msg[1].buf = val;
++	msg[1].len = size;
++
++	return i2c_transfer(client->adapter, msg, 2);
++}
++
++static int sensor_i2c_read_16b(struct i2c_client *client, u16 reg, u16 *value)
++{
++	u8 v[2] = {0,0};
++	int ret;
++
++	ret = sensor_i2c_read(client, reg, v, 2);
++
++	if (unlikely(ret < 0)) {
++		dev_err(&client->dev, "i2c transfer error.\n");
++		return ret;
++	}
++
++	*value = (v[0] << 8) | v[1];
++	dev_dbg(&client->dev, "%s() read reg 0x%x, value 0x%x\n",
++		 __func__, reg, *value);
++
++	return 0;
++}
++
++static int sensor_i2c_write_16b(struct i2c_client *client, u16 reg, u16 val)
++{
++	struct i2c_msg msg;
++	u8 buf[4];
++	int retry_tmp = 0;
++
++	buf[0] = reg >> 8;
++	buf[1] = reg & 0xff;
++	buf[2] = val >> 8;
++	buf[3] = val & 0xff;
++
++	msg.addr = client->addr;
++	msg.flags = client->flags;
++	msg.buf = buf;
++	msg.len = sizeof(buf);
++
++
++	while((i2c_transfer(client->adapter, &msg, 1)) < 0)
++	{
++		retry_tmp++;
++		dev_err(&client->dev, "i2c transfer retry:%d.\n", retry_tmp);
++		dev_dbg(&client->dev, "write 16b reg:%x val:%x.\n", reg, val);
++
++		if (retry_tmp > 50)
++		{
++			dev_err(&client->dev, "i2c transfer error.\n");
++			return -EIO;
++		}
++	}
++
++	return 0;
++}
++
++static int sensor_i2c_write_bust(struct i2c_client *client, u8 *buf, size_t len)
++{
++	struct i2c_msg msg;
++	int retry_tmp = 0;
++
++	if (len == 0) {
++		return 0;
++	}
++
++	msg.addr = client->addr;
++	msg.flags = client->flags;
++	msg.buf = buf;
++	msg.len = len;
++
++	while((i2c_transfer(client->adapter, &msg, 1)) < 0)
++	{
++		retry_tmp++;
++		dev_err(&client->dev, "i2c transfer retry:%d.\n", retry_tmp);
++		dev_dbg(&client->dev, "write bust buf:%x.\n", client->addr);
++
++		if (retry_tmp > 50)
++		{
++			dev_err(&client->dev, "i2c transfer error.\n");
++			return -EIO;
++		}
++	}
++
++	return 0;
++}
++
++static int ops_power(struct v4l2_subdev *sub_dev, int on)
++{
++	//struct sensor *instance = container_of(sub_dev, struct sensor, v4l2_subdev);
++
++	dev_dbg(sub_dev->dev, "%s() [%d]\n", __func__, on);
++	return 0;
++}
++
++static int ops_init(struct v4l2_subdev *sub_dev, u32 val)
++{
++	//struct sensor *instance = container_of(sub_dev, struct sensor, v4l2_subdev);
++
++	dev_dbg(sub_dev->dev, "%s() [%d]\n", __func__, val);
++	return 0;
++}
++
++static int ops_load_fw(struct v4l2_subdev *sub_dev)
++{
++	//struct sensor *instance = container_of(sub_dev, struct sensor, v4l2_subdev);
++
++	dev_dbg(sub_dev->dev, "%s()\n", __func__);
++	return 0;
++}
++
++static int ops_reset(struct v4l2_subdev *sub_dev, u32 val)
++{
++	//struct sensor *instance = container_of(sub_dev, struct sensor, v4l2_subdev);
++
++	dev_dbg(sub_dev->dev, "%s() [%d]\n", __func__, val);
++	return 0;
++}
++
++static int ops_get_frame_interval(struct v4l2_subdev *sub_dev,
++				  struct v4l2_subdev_frame_interval *fi)
++{
++	dev_dbg(sub_dev->dev, "%s()\n", __func__);
++
++	if (fi->pad != 0)
++		return -EINVAL;
++
++	fi->interval.numerator = 1;
++	fi->interval.denominator = 30;
++
++	return 0;
++}
++
++static int ops_set_frame_interval(struct v4l2_subdev *sub_dev,
++				  struct v4l2_subdev_frame_interval *fi)
++{
++	dev_dbg(sub_dev->dev, "%s()\n", __func__);
++
++	if (fi->pad != 0)
++		return -EINVAL;
++
++	fi->interval.numerator = 1;
++	fi->interval.denominator = 30;
++
++	return 0;
++}
++
++static int ops_set_stream(struct v4l2_subdev *sub_dev, int enable)
++{
++	struct sensor *instance = container_of(sub_dev, struct sensor, v4l2_subdev);
++	int ret = 0;
++
++	dev_dbg(sub_dev->dev, "%s() enable [%x]\n", __func__, enable);
++
++	if (instance->selected_mode >= ap1302_sensor_table[instance->selected_sensor].res_list_size)
++		return -EINVAL;
++
++	if (enable == 0) {
++		sensor_i2c_write_16b(instance->i2c_client, 0x1184, 1); //ATOMIC
++		//VIDEO_WIDTH
++		sensor_i2c_write_16b(instance->i2c_client, 0x2000, 1920);
++		//VIDEO_HEIGHT
++		sensor_i2c_write_16b(instance->i2c_client, 0x2002, 1080);
++		sensor_i2c_write_16b(instance->i2c_client, 0x1184, 0xb); //ATOMIC
++		ret = sensor_standby(instance->i2c_client, 1);
++	} else {
++		ret = sensor_standby(instance->i2c_client, 0);
++		if (ret == 0) {
++			int fps = ap1302_sensor_table[instance->selected_sensor].res_list[instance->selected_mode].framerates;
++			dev_dbg(sub_dev->dev, "%s() width=%d, height=%d\n", __func__, 
++				ap1302_sensor_table[instance->selected_sensor].res_list[instance->selected_mode].width, 
++				ap1302_sensor_table[instance->selected_sensor].res_list[instance->selected_mode].height);
++			sensor_i2c_write_16b(instance->i2c_client, 0x1184, 1); //ATOMIC
++			//VIDEO_WIDTH
++			sensor_i2c_write_16b(instance->i2c_client, 0x2000,
++					     ap1302_sensor_table[instance->selected_sensor].res_list[instance->selected_mode].width);
++			//VIDEO_HEIGHT
++			sensor_i2c_write_16b(instance->i2c_client, 0x2002,
++					     ap1302_sensor_table[instance->selected_sensor].res_list[instance->selected_mode].height);
++			sensor_i2c_write_16b(instance->i2c_client, 0x2020, fps << 8); //VIDEO_MAX_FPS
++			sensor_i2c_write_16b(instance->i2c_client, 0x1184, 0xb); //ATOMIC
++		}
++	}
++
++	return ret;
++}
++
++static int ops_enum_mbus_code(struct v4l2_subdev *sub_dev,
++			      struct v4l2_subdev_state *sd_state,
++			      struct v4l2_subdev_mbus_code_enum *code)
++{
++	dev_dbg(sub_dev->dev, "%s()\n", __func__);
++
++	if (code->pad || code->index > 0)
++		return -EINVAL;
++
++	code->code = MEDIA_BUS_FMT_UYVY8_2X8;
++
++	return 0;
++}
++
++static int ops_get_fmt(struct v4l2_subdev *sub_dev,
++		       struct v4l2_subdev_state *sd_state,
++		       struct v4l2_subdev_format *format)
++{
++	struct v4l2_mbus_framefmt *fmt;
++	struct v4l2_mbus_framefmt *mbus_fmt = &format->format;
++	struct sensor *instance = container_of(sub_dev, struct sensor, v4l2_subdev);
++
++	dev_dbg(sub_dev->dev, "%s()\n", __func__);
++
++	if (format->pad != 0)
++		return -EINVAL;
++
++	if (format->which == V4L2_SUBDEV_FORMAT_TRY)
++		fmt = v4l2_subdev_get_try_format(sub_dev,
++						 sd_state,
++						 format->pad);
++	else
++		fmt = &instance->fmt;
++
++	memmove(mbus_fmt, fmt, sizeof(struct v4l2_mbus_framefmt));
++
++	return 0;
++}
++
++static int ops_set_fmt(struct v4l2_subdev *sub_dev,
++		       struct v4l2_subdev_state *sd_state,
++		       struct v4l2_subdev_format *format)
++{
++	struct v4l2_mbus_framefmt *fmt;
++	struct v4l2_mbus_framefmt *mbus_fmt = &format->format;
++	struct sensor *instance = container_of(sub_dev, struct sensor, v4l2_subdev);
++	int i;
++
++	dev_dbg(sub_dev->dev, "%s()\n", __func__);
++
++	if (format->pad != 0)
++		return -EINVAL;
++
++	for(i = 0 ; i < ap1302_sensor_table[instance->selected_sensor].res_list_size ; i++)
++	{
++		if (mbus_fmt->width == ap1302_sensor_table[instance->selected_sensor].res_list[i].width &&
++				mbus_fmt->height == ap1302_sensor_table[instance->selected_sensor].res_list[i].height)
++			break;
++	}
++
++	if (i >= ap1302_sensor_table[instance->selected_sensor].res_list_size)
++	{
++		return -EINVAL;
++	}
++	instance->selected_mode = i;
++	dev_dbg(sub_dev->dev, "%s() selected mode index [%d]\n", __func__,
++		instance->selected_mode);
++
++	mbus_fmt->width = ap1302_sensor_table[instance->selected_sensor].res_list[i].width;
++	mbus_fmt->height = ap1302_sensor_table[instance->selected_sensor].res_list[i].height;
++	mbus_fmt->code = MEDIA_BUS_FMT_UYVY8_2X8;
++	mbus_fmt->colorspace = V4L2_COLORSPACE_SRGB;
++	mbus_fmt->ycbcr_enc = V4L2_MAP_YCBCR_ENC_DEFAULT(mbus_fmt->colorspace);
++	mbus_fmt->quantization = V4L2_QUANTIZATION_FULL_RANGE;
++	mbus_fmt->xfer_func = V4L2_MAP_XFER_FUNC_DEFAULT(mbus_fmt->colorspace);
++	memset(mbus_fmt->reserved, 0, sizeof(mbus_fmt->reserved));
++
++	if (format->which == V4L2_SUBDEV_FORMAT_TRY)
++		fmt = v4l2_subdev_get_try_format(sub_dev, sd_state, 0);
++	else
++		fmt = &instance->fmt;
++
++	memmove(fmt, mbus_fmt, sizeof(struct v4l2_mbus_framefmt));
++
++	return 0;
++}
++
++static int ops_enum_frame_size(struct v4l2_subdev *sub_dev,
++			       struct v4l2_subdev_state *sd_state,
++			       struct v4l2_subdev_frame_size_enum *fse)
++{
++	struct sensor *instance = container_of(sub_dev, struct sensor, v4l2_subdev);
++	dev_dbg(sub_dev->dev, "%s() %x %x %x\n", __func__,
++		fse->pad, fse->code, fse->index);
++
++	if ((fse->pad != 0) ||
++	    (fse->index >= ap1302_sensor_table[instance->selected_sensor].res_list_size))
++		return -EINVAL;
++
++	if(!instance->supports_over_4k_res &&
++	    ap1302_sensor_table[instance->selected_sensor].res_list[fse->index].width > 4096)
++		return -EINVAL;
++
++	fse->min_width = fse->max_width = ap1302_sensor_table[instance->selected_sensor].res_list[fse->index].width;
++	fse->min_height = fse->max_height = ap1302_sensor_table[instance->selected_sensor].res_list[fse->index].height;
++
++	return 0;
++}
++
++static int ops_enum_frame_interval(struct v4l2_subdev *sub_dev,
++				   struct v4l2_subdev_state *sd_state,
++				   struct v4l2_subdev_frame_interval_enum *fie)
++{
++	struct sensor *instance = container_of(sub_dev, struct sensor, v4l2_subdev);
++	int i;
++	dev_dbg(sub_dev->dev, "%s() %x %x %x\n", __func__,
++				fie->pad, fie->code, fie->index);
++
++	if ((fie->pad != 0) ||
++	    (fie->index != 0))
++		return -EINVAL;
++
++	fie->interval.numerator = 1;
++
++	for(i = 0 ; i < ap1302_sensor_table[instance->selected_sensor].res_list_size ; i++) {
++		if(fie->width == ap1302_sensor_table[instance->selected_sensor].res_list[i].width &&
++			fie->height == ap1302_sensor_table[instance->selected_sensor].res_list[i].height) {
++				fie->interval.denominator = ap1302_sensor_table[instance->selected_sensor].res_list[i].framerates;
++				break;
++			}
++	}
++
++	return 0;
++}
++
++static int ops_media_link_setup(struct media_entity *entity,
++				const struct media_pad *local,
++				const struct media_pad *remote, u32 flags)
++{
++	return 0;
++}
++
++static const struct v4l2_subdev_core_ops sensor_v4l2_subdev_core_ops = {
++	.s_power = ops_power,
++	.init = ops_init,
++	.load_fw = ops_load_fw,
++	.reset = ops_reset,
++};
++static const struct v4l2_subdev_video_ops sensor_v4l2_subdev_video_ops = {
++	.g_frame_interval = ops_get_frame_interval,
++	.s_frame_interval = ops_set_frame_interval,
++	.s_stream = ops_set_stream,
++};
++static const struct v4l2_subdev_pad_ops sensor_v4l2_subdev_pad_ops = {
++	.enum_mbus_code = ops_enum_mbus_code,
++	.get_fmt = ops_get_fmt,
++	.set_fmt = ops_set_fmt,
++	.enum_frame_size = ops_enum_frame_size,
++	.enum_frame_interval = ops_enum_frame_interval,
++};
++
++static const struct v4l2_subdev_ops sensor_subdev_ops = {
++	.core = &sensor_v4l2_subdev_core_ops,
++	.video = &sensor_v4l2_subdev_video_ops,
++	.pad = &sensor_v4l2_subdev_pad_ops,
++};
++
++static const struct media_entity_operations sensor_media_entity_ops = {
++	.link_setup = ops_media_link_setup,
++};
++
++static int check_sensor_chip_id(struct i2c_client *client, u16* chip_id)
++{
++	int timeout;
++
++	for (timeout = 0 ; timeout < 100 ; timeout ++) {
++		usleep_range(9000, 10000);
++		sensor_i2c_read_16b(client, 0x60AC, chip_id);
++		if ((*chip_id & 0x7) == 0)
++			break;
++	}
++	if (timeout >= 100) {
++		dev_err(&client->dev, "timeout: line[%d]v=%x\n", __LINE__, *chip_id);
++		return -EINVAL;
++	}
++	sensor_i2c_write_16b(client, 0x60AA, 0x0002); // DMA_SIZE
++	sensor_i2c_write_16b(client, 0x60A0, 0x0320); // DMA_SRC_0
++	sensor_i2c_write_16b(client, 0x60A2, 0x3000); // DMA_SRC_1
++	sensor_i2c_write_16b(client, 0x60A4, 0x0000); // DMA_DST_0
++	sensor_i2c_write_16b(client, 0x60A6, 0x60A4); // DMA_DST_1
++	sensor_i2c_write_16b(client, 0x60AC, 0x0032); // DMA_CTRL
++	for (timeout = 0 ; timeout < 100 ; timeout ++) {
++		usleep_range(9000, 10000);
++		sensor_i2c_read_16b(client, 0x60AC, chip_id);
++		if ((*chip_id & 0x7) == 0)
++			break;
++	}
++	if (timeout >= 100) {
++		dev_err(&client->dev, "timeout: line[%d]v=%x\n", __LINE__, *chip_id);
++		return -EINVAL;
++	}
++	sensor_i2c_read_16b(client, 0x60A4, chip_id);
++
++	return 0;
++}
++
++static int set_standby_mode_rel419(struct i2c_client *client, int enable)
++{
++	u16 v = 0;
++	int timeout;
++	dev_dbg(&client->dev, "%s():enable=%d\n", __func__, enable);
++
++	if (enable == 1) {
++		sensor_i2c_write_16b(client, 0xf056, 0x0000);
++		sensor_i2c_write_16b(client, 0x601a, 0x8140);
++		for (timeout = 0 ; timeout < 500 ; timeout ++) {
++			usleep_range(9000, 10000);
++			sensor_i2c_read_16b(client, 0x601a, &v);
++			if ((v & 0x200) == 0x200)
++				break;
++		}
++		if (timeout < 500) {
++			if(check_sensor_chip_id(client, &v) == 0) {
++				if (v == 0x356) {
++					dev_dbg(&client->dev, "sensor check: v=0x%x\nbypass standby and set fw stall gate frames.\n", v);
++					return 0;
++				}
++			}
++			// Reset ADV_GPIO in Advanced Registers
++			sensor_i2c_write_16b(client, 0xF038, 0x002A);
++			sensor_i2c_write_16b(client, 0xF03A, 0x0000);
++			sensor_i2c_write_16b(client, 0xE002, 0x0490);
++			sensor_i2c_write_16b(client, 0xFFFE, 1);
++			msleep(100);
++		} else {
++			dev_err(&client->dev, "timeout: line[%d]\n", __LINE__);
++			return -EINVAL;
++		}
++	} else {
++		sensor_i2c_write_16b(client, 0xFFFE, 0);
++		for (timeout = 0 ; timeout < 500 ; timeout ++) {
++			usleep_range(9000, 10000);
++			sensor_i2c_read_16b(client, 0, &v);
++		  	if (v != 0)
++		 	  break;
++		}
++		if (timeout >= 500) {
++		 dev_err(&client->dev, "timeout: line[%d]v=%x\n", __LINE__, v);
++		 return -EINVAL;
++		}
++		for (timeout = 0 ; timeout < 500 ; timeout ++) {
++			if(check_sensor_chip_id(client, &v) == 0) {
++				if (v == 0x356) {
++					dev_dbg(&client->dev, "sensor check: v=0x%x\nrecover status from fw stall gate frames.\n", v);
++					sensor_i2c_write_16b(client, 0x601a, 0x8340);
++					msleep(10);
++					break;
++				}
++			}
++		}
++
++		for (timeout = 0 ; timeout < 100 ; timeout ++) {
++			usleep_range(9000, 10000);
++			sensor_i2c_read_16b(client, 0x601a, &v);
++			if ((v & 0x200) == 0x200)
++				break;
++		}
++		if ( (v & 0x200) != 0x200 ) {
++			dev_dbg(&client->dev, "stop waking up: camera is working.\n");
++			return 0;
++		}
++
++		sensor_i2c_write_16b(client, 0x601a, 0x241);
++		usleep_range(1000, 2000);
++		for (timeout = 0 ; timeout < 100 ; timeout ++) {
++			usleep_range(9000, 10000);
++			sensor_i2c_read_16b(client, 0x601a, &v);
++			if ((v & 1) == 0)
++				break;
++		}
++		if (timeout >= 100) {
++			dev_err(&client->dev, "timeout: line[%d]v=%x\n", __LINE__, v);
++			return -EINVAL;
++		}
++
++		for (timeout = 0 ; timeout < 100 ; timeout ++) {
++			usleep_range(9000, 10000);
++			sensor_i2c_read_16b(client, 0x601a, &v);
++			if ((v & 0x8000) == 0x8000)
++				break;
++		}
++		if (timeout >= 100) {
++			dev_err(&client->dev, "timeout: line[%d]v=%x\n", __LINE__, v);
++			return -EINVAL;
++		}
++
++		sensor_i2c_write_16b(client, 0x601a, 0x8250);
++		for (timeout = 0 ; timeout < 100 ; timeout ++) {
++			usleep_range(9000, 10000);
++			sensor_i2c_read_16b(client, 0x601a, &v);
++			if ((v & 0x8040) == 0x8040)
++				break;
++		}
++		if (timeout >= 100) {
++			dev_err(&client->dev, "timeout: line[%d]v=%x\n", __LINE__, v);
++			return -EINVAL;
++		}
++		sensor_i2c_write_16b(client, 0xF056, 0x0000);
++
++		dev_dbg(&client->dev, "sensor wake up\n");
++	}
++
++	return 0;
++}
++
++static int sensor_standby(struct i2c_client *client, int enable)
++{
++	u16 v = 0;
++	int timeout;
++	u16 checksum = 0;
++	dev_dbg(&client->dev, "%s():enable=%d\n", __func__, enable);
++
++	for (timeout = 0 ; timeout < 50 ; timeout ++) {
++		usleep_range(9000, 10000);
++		sensor_i2c_read_16b(client, 0x6134, &checksum);
++		if (checksum == 0xFFFF)
++			break;
++	}
++	if(checksum != 0xFFFF){
++		return set_standby_mode_rel419(client, enable); // standby for rel419
++	}
++
++	if (enable == 1) {
++		sensor_i2c_write_16b(client, 0x601a, 0x0180);
++		for (timeout = 0 ; timeout < 500 ; timeout ++) {
++			usleep_range(9000, 10000);
++			sensor_i2c_read_16b(client, 0x601a, &v);
++			if ((v & 0x200) == 0x200)
++				break;
++		}
++		if (timeout < 500) {
++			msleep(100);
++		} else {
++			dev_err(&client->dev, "timeout: line[%d]v=%x\n", __LINE__, v);
++			return -EINVAL;
++		}
++	} else {
++		sensor_i2c_write_16b(client, 0x601a, 0x0380);
++		for (timeout = 0 ; timeout < 100 ; timeout ++) {
++			usleep_range(9000, 10000);
++			sensor_i2c_read_16b(client, 0x601a, &v);
++			if ((v & 0x200) == 0)
++				break;
++		}
++		if (timeout >= 100) {
++			dev_err(&client->dev, "timeout: line[%d]v=%x\n", __LINE__, v);
++			return -EINVAL;
++		}
++		dev_dbg(&client->dev, "sensor wake up\n");
++	}
++
++	return 0;
++}
++
++static int sensor_power_on(struct sensor *instance)
++{
++	dev_dbg(&instance->i2c_client->dev, "%s()\n", __func__);
++	gpiod_set_value_cansleep(instance->host_power_gpio, 1);
++	gpiod_set_value_cansleep(instance->device_power_gpio, 1);
++	usleep_range(500, 5000);
++	gpiod_set_value_cansleep(instance->reset_gpio, 1);
++	msleep(10);
++
++	return 0;
++}
++
++static int sensor_power_off(struct sensor *instance)
++{
++	dev_dbg(&instance->i2c_client->dev, "%s()\n", __func__);
++	gpiod_set_value_cansleep(instance->standby_gpio, 0);
++	gpiod_set_value_cansleep(instance->reset_gpio, 0);
++	usleep_range(50, 500);
++	gpiod_set_value_cansleep(instance->device_power_gpio, 0);
++	gpiod_set_value_cansleep(instance->host_power_gpio, 0);
++	msleep(10);
++
++	return 0;
++}
++
++static int sensor_try_on(struct sensor *instance)
++{
++	u16 v;
++	dev_dbg(&instance->i2c_client->dev, "%s()\n", __func__);
++
++	sensor_power_off(instance);
++
++	sensor_power_on(instance);
++
++	if (sensor_i2c_read_16b(instance->i2c_client, 0, &v) != 0) {
++		dev_err(&instance->i2c_client->dev, "%s() try on failed\n",
++			__func__);
++		sensor_power_off(instance);
++		return -EINVAL;
++	}
++
++	return 0;
++}
++
++static int sensor_load_bootdata(struct sensor *instance)
++{
++	struct device *dev = &instance->i2c_client->dev;
++	int index = 0;
++	size_t len = BOOT_DATA_WRITE_LEN;
++	u16 otp_data;
++	u16 *bootdata_temp_area;
++	u16 checksum;
++
++	bootdata_temp_area = devm_kzalloc(dev,
++					  BOOT_DATA_WRITE_LEN + 2,
++					  GFP_KERNEL);
++	if (bootdata_temp_area == NULL) {
++		dev_err(dev, "allocate memory failed\n");
++		return -EINVAL;
++	}
++
++	checksum = ap1302_otp_flash_get_checksum(instance->otp_flash_instance);
++
++	while(!(len < BOOT_DATA_WRITE_LEN)) {
++		bootdata_temp_area[0] = cpu_to_be16(BOOT_DATA_START_REG);
++		len = ap1302_otp_flash_read(instance->otp_flash_instance,
++					    (u8 *)(&bootdata_temp_area[1]),
++					    index, BOOT_DATA_WRITE_LEN);
++		dev_dbg(dev, "index: 0x%04x, len [%zu]\n", index, len);
++		sensor_i2c_write_bust(instance->i2c_client,
++				      (u8 *)bootdata_temp_area,
++				      len + 2);
++		index += len;
++	}
++
++	sensor_i2c_write_16b(instance->i2c_client, 0x6002, 0xffff);
++	devm_kfree(dev, bootdata_temp_area);
++
++	index = 0;
++	otp_data = 0;
++	while(otp_data != checksum && index < 20) {
++		msleep(10);
++		sensor_i2c_read_16b(instance->i2c_client, 0x6134, &otp_data);
++		index ++;
++	}
++	if (unlikely(index == 20)) {
++		if (likely(otp_data == 0))
++			dev_err(dev, "failed try to read checksum\n");
++		else
++			dev_err(dev, "bootdata checksum missmatch\n");
++
++		return -EINVAL;
++	}
++
++	return 0;
++}
++
++static int sensor_probe(struct i2c_client *client, const struct i2c_device_id *id)
++{
++	struct sensor *instance = NULL;
++	struct device *dev = &client->dev;
++	struct v4l2_mbus_framefmt *fmt;
++	struct header_ver2 *header;
++	int data_lanes;
++	int continuous_clock;
++	int i;
++	int ret;
++	int retry_f;
++
++	dev_info(&client->dev, "%s() device node: %s\n",
++		       __func__, client->dev.of_node->full_name);
++
++	instance = devm_kzalloc(dev, sizeof(struct sensor), GFP_KERNEL);
++	if (instance == NULL) {
++		dev_err(dev, "allocate memory failed\n");
++		return -EINVAL;
++	}
++	instance->i2c_client = client;
++
++	instance->host_power_gpio = devm_gpiod_get(dev, "host-power",
++						   GPIOD_OUT_LOW);
++	instance->device_power_gpio = devm_gpiod_get(dev, "device-power",
++						     GPIOD_OUT_LOW);
++	instance->reset_gpio = devm_gpiod_get(dev, "reset", GPIOD_OUT_LOW);
++	instance->standby_gpio = devm_gpiod_get(dev, "standby", GPIOD_OUT_LOW);
++
++	if (IS_ERR(instance->reset_gpio) ||
++	    IS_ERR(instance->host_power_gpio) ||
++	    IS_ERR(instance->device_power_gpio) ||
++	    IS_ERR(instance->standby_gpio) ) {
++		dev_err(dev, "get gpio object failed\n");
++		return -EPROBE_DEFER;
++	}
++
++	data_lanes = 4;
++	if (of_property_read_u32(dev->of_node, "data-lanes", &data_lanes) == 0) {
++		if ((data_lanes < 1) || (data_lanes > 4)) {
++			dev_err(dev, "value of 'data-lanes' property is invaild\n");
++			data_lanes = 4;
++		}
++	}
++
++	continuous_clock = 0;
++	if (of_property_read_u32(dev->of_node, "continuous-clock",
++				 &continuous_clock) == 0) {
++		if (continuous_clock > 1) {
++			dev_err(dev, "value of 'continuous-clock' property is invaild\n");
++			continuous_clock = 0;
++		}
++	}
++
++	instance->supports_over_4k_res = of_property_read_bool(dev->of_node, "supports-over-4k-res");
++
++	dev_dbg(dev, "data-lanes [%d] ,continuous-clock [%d], supports-over-4k-res [%d]\n",
++		data_lanes, continuous_clock, instance->supports_over_4k_res);
++
++	retry_f = 0x01;
++	/*
++	bit 0: start bit
++	bit 1: sensor_try_on fail
++	bit 2: ap1302_otp_flash_init fail
++	bit 3: sensor_load_bootdata fail
++	bit 4-7: retry count
++	*/
++	while(retry_f) {
++		retry_f &= ~0x01;
++
++		if (sensor_try_on(instance) != 0) {
++			retry_f |= 0x02 ;
++		}
++
++		instance->otp_flash_instance = ap1302_otp_flash_init(dev);
++		if(IS_ERR(instance->otp_flash_instance)) {
++			dev_err(dev, "otp flash init failed\n");
++			// retry_f |= 0x04 ;
++			return -EINVAL;
++		}
++
++		header = instance->otp_flash_instance->header_data;
++		for(i = 0 ; i < ARRAY_SIZE(ap1302_sensor_table); i++)
++		{
++			if (strcmp((const char*)header->product_name, ap1302_sensor_table[i].sensor_name) == 0)
++				break;
++		}
++		instance->selected_sensor = i;
++		dev_dbg(dev, "selected_sensor:%d, sensor_name:%s\n", i, header->product_name);
++
++		if(sensor_load_bootdata(instance) != 0) {
++			dev_err(dev, "load bootdata failed\n");
++			retry_f |= 0x08 ;
++		}
++
++		if ((retry_f & 0x0F) != 0x00) {
++			if (((retry_f & 0x30) >> 4 ) < 3 ) {
++				retry_f += 1 << 4;
++				retry_f &= ~0x0F;
++				dev_err(dev, "Probe retry:%d.\n", ((retry_f & 0x30) >> 4 ));
++			}
++			else {
++				retry_f &= 0x00;
++				dev_dbg(dev, "Probe retry failed\n");
++				return  -EINVAL;
++			}
++		}
++	}
++
++	fmt = &instance->fmt;
++	fmt->width = ap1302_sensor_table[instance->selected_sensor].res_list[0].width;
++	fmt->height = ap1302_sensor_table[instance->selected_sensor].res_list[0].height;
++	fmt->field = V4L2_FIELD_NONE;
++	fmt->code = MEDIA_BUS_FMT_UYVY8_2X8;
++	fmt->colorspace =  V4L2_COLORSPACE_SRGB;
++	fmt->ycbcr_enc = V4L2_MAP_YCBCR_ENC_DEFAULT(fmt->colorspace);
++	fmt->quantization = V4L2_QUANTIZATION_FULL_RANGE;
++	fmt->xfer_func = V4L2_MAP_XFER_FUNC_DEFAULT(fmt->colorspace);
++	memset(fmt->reserved, 0, sizeof(fmt->reserved));
++
++	v4l2_i2c_subdev_init(&instance->v4l2_subdev,
++			     instance->i2c_client, &sensor_subdev_ops);
++	//instance->v4l2_subdev.flags |= V4L2_SUBDEV_FL_HAS_EVENTS;
++	instance->pad.flags = MEDIA_PAD_FL_SOURCE;
++	instance->v4l2_subdev.entity.ops = &sensor_media_entity_ops;
++	instance->v4l2_subdev.entity.function = MEDIA_ENT_F_CAM_SENSOR;
++	ret = media_entity_pads_init(&instance->v4l2_subdev.entity, 1, &instance->pad);
++	ret += v4l2_async_register_subdev(&instance->v4l2_subdev);
++	if (ret != 0) {
++		dev_err(&instance->i2c_client->dev, "v4l2 register failed\n");
++		return -EINVAL;
++	}
++
++	//set something reference from DevX tool register log
++	//cntx select 'Video'
++	sensor_i2c_write_16b(instance->i2c_client, 0x1184, 1); //ATOMIC
++	sensor_i2c_write_16b(instance->i2c_client, 0x1000, 0); //CTRL
++	sensor_i2c_write_16b(instance->i2c_client, 0x1184, 0xb); //ATOMIC
++	msleep(1);
++	sensor_i2c_write_16b(instance->i2c_client, 0x1184, 1); //ATOMIC
++	//Video output
++	sensor_i2c_write_16b(instance->i2c_client, 0x2000, ap1302_sensor_table[instance->selected_sensor].res_list[0].width); //VIDEO_WIDTH
++	sensor_i2c_write_16b(instance->i2c_client, 0x2002, ap1302_sensor_table[instance->selected_sensor].res_list[0].height); //VIDEO_HEIGHT
++	sensor_i2c_write_16b(instance->i2c_client, 0x2012, 0x50); //VIDEO_OUT_FMT
++	//continuous clock, data-lanes
++	sensor_i2c_write_16b(instance->i2c_client, 0x2030,
++			     0x10 | (continuous_clock << 5) | (data_lanes)); //VIDEO_HINF_CTRL
++	sensor_i2c_write_16b(instance->i2c_client, 0x1184, 0xb); //ATOMIC
++
++	//let ap1302 go to standby mode
++	ret = sensor_standby(instance->i2c_client, 1);
++	if (ret == 0)
++		dev_info(&client->dev, "probe success\n");
++	else
++		dev_err(&client->dev, "probe failed\n");
++
++	return ret;
++}
++
++static int sensor_remove(struct i2c_client *client)
++{
++	return 0;
++}
++
++static const struct i2c_device_id sensor_id[] = {
++	{ "tevi-ap1302", 0 },
++	{}
++};
++MODULE_DEVICE_TABLE(i2c, sensor_id);
++
++static const struct of_device_id sensor_of[] = {
++	{ .compatible = "tn,tevi-ap1302" },
++	{ /* sentinel */ }
++};
++MODULE_DEVICE_TABLE(of, sensor_of);
++
++static struct i2c_driver sensor_i2c_driver = {
++	.driver = {
++		.of_match_table = of_match_ptr(sensor_of),
++		.name  = "tevi-ap1302",
++	},
++	.probe = sensor_probe,
++	.remove = sensor_remove,
++	.id_table = sensor_id,
++};
++
++module_i2c_driver(sensor_i2c_driver);
++
++MODULE_AUTHOR("TECHNEXION Inc.");
++MODULE_DESCRIPTION("TechNexion driver for TEVI-AR Series");
++MODULE_LICENSE("GPL");
++MODULE_VERSION("1.0");
++MODULE_ALIAS("Camera");
+diff --git a/drivers/media/i2c/tevi-ap1302/otp_flash.c b/drivers/media/i2c/tevi-ap1302/otp_flash.c
+new file mode 100644
+index 000000000000..2f73e4ea9d15
+--- /dev/null
++++ b/drivers/media/i2c/tevi-ap1302/otp_flash.c
+@@ -0,0 +1,164 @@
++#include <linux/i2c.h>
++#include "otp_flash.h"
++
++#ifdef __FAKE__
++#include "bootdata.h"
++
++struct otp_flash *ap1302_otp_flash_init(struct device *dev)
++{
++	return NULL;
++}
++
++u16 ap1302_otp_flash_get_checksum(struct otp_flash *instance)
++{
++	return BOOTDATA_CHECKSUM;
++}
++
++size_t ap1302_otp_flash_read(struct otp_flash *instance, u8 *data, int addr, size_t len)
++{
++	size_t l;
++
++	l = len > BOOT_DATA_WRITE_LEN ? BOOT_DATA_WRITE_LEN : len;
++
++	l = (BOOTDATA_TOTAL_SIZE - addr) < BOOT_DATA_WRITE_LEN ?
++	       BOOTDATA_TOTAL_SIZE - addr : l;
++
++	memmove(data, &((u8*)__bootdata__)[addr], l);
++	return l;
++}
++
++size_t ap1302_otp_flash_get_pll_length(struct otp_flash *instance)
++{
++	return BOOTDATA_PLL_INIT_SIZE;
++}
++
++size_t ap1302_otp_flash_get_pll_section(struct otp_flash *instance, u8 *data)
++{
++	ap1302_otp_flash_read(instance, data, 0, BOOTDATA_PLL_INIT_SIZE);
++	return BOOTDATA_PLL_INIT_SIZE;
++}
++#else
++#include <linux/nvmem-consumer.h>
++
++struct otp_flash *ap1302_otp_flash_init(struct device *dev)
++{
++	struct otp_flash *instance;
++	u8 __header_ver;
++	struct header_ver2 *header;
++	
++	instance = devm_kzalloc(dev, sizeof(struct otp_flash), GFP_KERNEL);
++	if (instance == NULL) {
++		dev_err(dev, "allocate memory failed\n");
++		return ERR_PTR(-EINVAL);
++	}
++	instance->dev = dev;
++
++	instance->nvmem = devm_nvmem_device_get(dev, "calib-data");
++	if (IS_ERR(instance->nvmem)) {
++		dev_err(dev, "find not otp flash setting\n");
++		goto fail1;
++	}
++
++	nvmem_device_read(instance->nvmem, 0, 1, &__header_ver);
++
++	if (__header_ver == 2) {
++		instance->header_data =
++			devm_kzalloc(dev, sizeof(struct header_ver2),
++				     GFP_KERNEL);
++
++		nvmem_device_read(instance->nvmem,
++				  0,
++				  sizeof(struct header_ver2),
++				  instance->header_data);
++
++		header = instance->header_data;
++		dev_info(dev, "Product:%s, Version:%d. Lens:%s, Version:%d\n",
++			 header->product_name,
++			 header->product_version,
++			 header->lens_name,
++			 header->lens_version);
++
++		dev_dbg(dev, "content ver: %d, content checksum: %x\n",
++			header->content_version, header->content_checksum);
++		dev_dbg(dev, "content length: %d, pll bootdata length: %d\n",
++			header->content_len, header->pll_bootdata_len);
++
++		return instance;
++	} else {
++		dev_err(dev, "can't recognize header version number '0x%X'\n",
++			__header_ver);
++	}
++
++fail1:
++	devm_kfree(dev, instance);
++	return ERR_PTR(-EINVAL);
++}
++
++u16 ap1302_otp_flash_get_checksum(struct otp_flash *instance)
++{
++	struct header_ver2 *header;
++
++	if( ((u8*)instance->header_data)[0] == 2 ) {
++		header = (struct header_ver2 *)instance->header_data;
++		return header->content_checksum;
++	}
++
++	return 0xffff;
++}
++
++size_t ap1302_otp_flash_read(struct otp_flash *instance, u8 *data, int addr, size_t len)
++{
++	u8 *temp;
++	struct header_ver2 *header;
++	size_t l;
++
++	temp = (u8*)instance->header_data;
++	if(temp[0] == 2) {
++		header = (struct header_ver2 *)instance->header_data;
++		l = len > BOOT_DATA_WRITE_LEN ? BOOT_DATA_WRITE_LEN : len;
++
++		l = (header->content_len - addr) < BOOT_DATA_WRITE_LEN ?
++			header->content_len - addr : l;
++
++		nvmem_device_read(instance->nvmem,
++				  addr + header->content_offset,
++				  l,
++				  data);
++		return l;
++	}
++
++	return 0;
++}
++
++size_t ap1302_otp_flash_get_pll_length(struct otp_flash *instance)
++{
++	u8 *temp;
++	struct header_ver2 *header;
++
++	temp = (u8*)instance->header_data;
++	if(temp[0] == 2) {
++		header = (struct header_ver2 *)instance->header_data;
++		return header->pll_bootdata_len;
++	}
++
++	return 0;
++}
++
++size_t ap1302_otp_flash_get_pll_section(struct otp_flash *instance, u8 *data)
++{
++	u8 *temp;
++	struct header_ver2 *header;
++
++	temp = (u8*)instance->header_data;
++	if(temp[0] == 2) {
++		header = (struct header_ver2 *)instance->header_data;
++		if (header->pll_bootdata_len != 0) {
++			ap1302_otp_flash_read(instance, data, 0,
++					      header->pll_bootdata_len);
++		}
++		return header->pll_bootdata_len;
++	}
++
++	return 0;
++}
++#endif
+diff --git a/drivers/media/i2c/tevi-ap1302/otp_flash.h b/drivers/media/i2c/tevi-ap1302/otp_flash.h
+new file mode 100644
+index 000000000000..a116a04e08bb
+--- /dev/null
++++ b/drivers/media/i2c/tevi-ap1302/otp_flash.h
+@@ -0,0 +1,50 @@
++#ifndef __OTP_FLASH_H__
++#define __OTP_FLASH_H__
++
++#include <linux/i2c.h>
++
++#define BOOT_DATA_START_REG (0x8000)
++#define BOOT_DATA_END_REG (0x9FFF)
++#define BOOT_DATA_WRITE_LEN (BOOT_DATA_END_REG - BOOT_DATA_START_REG + 1)
++
++struct otp_flash {
++	struct device *dev;
++	struct nvmem_device *nvmem;
++	void *header_data;
++};
++
++/*
++header Version 2 : {
++	uint8 header_version
++	uint16 content_offset //content_offset may not be equal to the size of header
++	uint8 product_name[64]
++	uint8 product_version
++	uint8 lens_name[64]
++	uint8 lens_version
++	uint8 content_version
++	uint32 content_checksum
++	uint32 content_len
++	uint16 pll_bootdata_len
++}
++*/
++struct header_ver2 {
++	u8 header_version;
++	u16 content_offset;
++	u8 product_name[64];
++	u8 product_version;
++	u8 lens_name[64];
++	u8 lens_version;
++	u8 content_version;
++	u32 content_checksum;
++	u32 content_len;
++	u16 pll_bootdata_len;
++} __attribute__((packed));
++
++struct otp_flash;
++struct otp_flash *ap1302_otp_flash_init(struct device *dev);
++u16 ap1302_otp_flash_get_checksum(struct otp_flash *instance);
++size_t ap1302_otp_flash_read(struct otp_flash *instance, u8 *data, int addr, size_t len);
++size_t ap1302_otp_flash_get_pll_length(struct otp_flash *instance);
++size_t ap1302_otp_flash_get_pll_section(struct otp_flash*instance, u8 *data);
++
++#endif
+diff --git a/drivers/media/i2c/tevi-ap1302/sensor_tbls.h b/drivers/media/i2c/tevi-ap1302/sensor_tbls.h
+new file mode 100644
+index 000000000000..e09cedfdfeca
+--- /dev/null
++++ b/drivers/media/i2c/tevi-ap1302/sensor_tbls.h
+@@ -0,0 +1,108 @@
++#ifndef __AP1302_SENSOR_TABLES_H__
++#define __AP1302_SENSOR_TABLES_H__
++
++struct resolution {
++	u16 width;
++	u16 height;
++	u16 framerates;
++};
++
++static struct resolution ar0144_res_list[] = {
++	{.width = 1280, .height = 720, .framerates = 60},
++	{.width = 1280, .height = 800, .framerates = 60},
++};
++
++static struct resolution ar0234_res_list[] = {
++	{.width = 1280, .height = 720, .framerates = 120},
++	{.width = 1920, .height = 1080, .framerates = 96},
++	{.width = 1920, .height = 1200, .framerates = 87},
++};
++
++static struct resolution ar0521_res_list[] = {
++	{.width = 1280, .height = 720, .framerates = 60},
++	{.width = 1920, .height = 1080, .framerates = 60},
++	{.width = 2560, .height = 1440, .framerates = 40},
++	{.width = 2592, .height = 1944, .framerates = 40},
++};
++
++static struct resolution ar0522_res_list[] = {
++	{.width = 1280, .height = 720, .framerates = 60},
++	{.width = 1920, .height = 1080, .framerates = 60},
++	{.width = 2560, .height = 1440, .framerates = 60},
++	{.width = 2592, .height = 1944, .framerates = 40},
++};
++
++static struct resolution ar0821_res_list[] = {
++	{.width = 1280, .height = 720, .framerates = 40},
++	{.width = 1920, .height = 1080, .framerates = 40},
++	{.width = 3840, .height = 2160, .framerates = 24},
++};
++
++static struct resolution ar1335_res_list[] = {
++	{.width = 640, .height = 480, .framerates = 120},    //HD  480p
++	{.width = 1280, .height = 720, .framerates = 60},    //HD  720p
++	{.width = 1920, .height = 1080, .framerates = 60},   //FHD 1080p
++	// {.width = 2560, .height = 1440, .framerates = 30},   //2K  1440p
++	// {.width = 3840, .height = 2160, .framerates = 30},   //4K  2160p
++	{.width = 4192, .height = 3120, .framerates = 24},
++	{.width = 4208, .height = 3120, .framerates = 15},
++};
++
++static struct resolution ar1820_res_list[] = {
++	{.width = 1280, .height = 720, .framerates = 30},    //HD  720p
++	{.width = 1920, .height = 1080, .framerates = 30},   //FHD 1080p
++	{.width = 2560, .height = 1440, .framerates = 30},   //2K  1440p
++	{.width = 3840, .height = 2160, .framerates = 30},   //4K  2160p
++	{.width = 4136, .height = 3102, .framerates = 20},
++};
++
++struct sensor_info {
++	const char* sensor_name;
++	const struct resolution *res_list;
++	u32 res_list_size;
++};
++
++static struct sensor_info ap1302_sensor_table[] = {
++	{
++		.sensor_name = "TEVI-AR0144",
++		.res_list = ar0144_res_list,
++		.res_list_size = ARRAY_SIZE(ar0144_res_list)
++	},
++	{
++		.sensor_name = "TEVI-AR0234",
++		.res_list = ar0234_res_list,
++		.res_list_size = ARRAY_SIZE(ar0234_res_list)
++	},
++	{
++		.sensor_name = "TEVI-AR0521",
++		.res_list = ar0521_res_list,
++		.res_list_size = ARRAY_SIZE(ar0521_res_list)
++	},
++	{
++		.sensor_name = "TEVI-AR0522",
++		.res_list = ar0522_res_list,
++		.res_list_size = ARRAY_SIZE(ar0522_res_list)
++	},
++	{
++		.sensor_name = "TEVI-AR0821",
++		.res_list = ar0821_res_list,
++		.res_list_size = ARRAY_SIZE(ar0821_res_list)
++	},
++	{
++		.sensor_name = "TEVI-AR0822",
++		.res_list = ar0821_res_list,
++		.res_list_size = ARRAY_SIZE(ar0821_res_list)
++	},
++	{
++		.sensor_name = "TEVI-AR1335",
++		.res_list = ar1335_res_list,
++		.res_list_size = ARRAY_SIZE(ar1335_res_list)
++	},
++	{
++		.sensor_name = "TEVI-AR1820",
++		.res_list = ar1820_res_list,
++		.res_list_size = ARRAY_SIZE(ar1820_res_list)
++	},
++};
++
++#endif //__AP1302_SENSOR_TABLES_H__
+\ No newline at end of file
+diff --git a/drivers/media/platform/mxc/capture/mxc_mipi_csi.c b/drivers/media/platform/mxc/capture/mxc_mipi_csi.c
+index db9101f573cc..2f33a5476794 100644
+--- a/drivers/media/platform/mxc/capture/mxc_mipi_csi.c
++++ b/drivers/media/platform/mxc/capture/mxc_mipi_csi.c
+@@ -317,6 +317,10 @@ static const struct csis_pix_format mipi_csis_formats[] = {
+ 		.code = MEDIA_BUS_FMT_VYUY8_2X8,
+ 		.fmt_reg = MIPI_CSIS_ISPCFG_FMT_YCBCR422_8BIT,
+ 		.data_alignment = 16,
++	}, {
++		.code = MEDIA_BUS_FMT_UYVY8_2X8,
++		.fmt_reg = MIPI_CSIS_ISPCFG_FMT_YCBCR422_8BIT,
++		.data_alignment = 16,
+ 	}, {
+ 		.code = MEDIA_BUS_FMT_SBGGR8_1X8,
+ 		.fmt_reg = MIPI_CSIS_ISPCFG_FMT_RAW8,
+@@ -928,13 +932,13 @@ static int subdev_notifier_bound(struct v4l2_async_notifier *notifier,
  {
--	int loopvar = 2000;
-+	int loopvar = 10000;
+ 	struct csi_state *state = notifier_to_mipi_dev(notifier);
  
- 	qbman_swp_mc_submit(swp, cmd, cmd_verb);
++	if (subdev == NULL)
++		return -EINVAL;
++
+ 	/* Find platform data for this sensor subdev */
+ 	if (state->fwnode == dev_fwnode(subdev->dev))
+ 		state->sensor_sd = subdev;
  
+-	if (subdev == NULL)
+-		return -EINVAL;
+-
+ 	v4l2_info(&state->v4l2_dev, "Registered sensor subdevice: %s\n",
+ 		  subdev->name);
+ 
+@@ -1315,4 +1319,4 @@ static struct platform_driver mipi_csis_driver = {
+ module_platform_driver(mipi_csis_driver);
+ 
+ MODULE_DESCRIPTION("Freescale MIPI-CSI2 receiver driver");
+-MODULE_LICENSE("GPL");
++MODULE_LICENSE("GPL");
+\ No newline at end of file
