@@ -14,8 +14,8 @@ $PATH_TO - путь до места, где будет создана папка
 09. repo sync
 10. DISTRO=fsl-imx-wayland MACHINE=imx8mm-lpddr4-evk source imx-setup-release.sh -b build
 11. devtool modify linux-imx
- 11a. На этом шаге может возникнуть ошибка компиляции, из-за того что более свежие
-      верии git более не поддерживают "git submodule--helper list":
+ 11a. На следуюшем шаге может возникнуть ошибка компиляции, из-за того что более
+      свежие верии git более не поддерживают "git submodule--helper list":
       "Command '['git', 'submodule--helper', 'list']' returned non-zero exit status 129".
       Решить проблему можно следующим образом:
       curl https://git.yoctoproject.org/poky/patch/?id=0533edac277080e1bd130c14df0cbac61ba01a0c > ../externalrc.bbclass.patch
@@ -31,6 +31,5 @@ $PATH_TO - путь до места, где будет создана папка
 20. Скопировать файл layer.conf в $PATH_TO/imx-yocto-bsp/build/workspace/conf
 21. Перейти в папку $PATH_TO/imx-yocto-bsp/build
 22. Перед сборкой убедитесь, что свободного места на диске больше чем 150ГБ
-23. Запустить сборку bitbake imx-image-multimedia
-24. Запустить сборку для платы MACHINE=imx8mm-mgqs bitbake imx-image-multimedia
-25. Полученный образ расположен в $PATH_TO/imx-yocto-bsp/build/tmp/deploy/images/imx8mm-mgqs/imx-image-multimedia-imx8mm-mgqs-*.rootfs.wic.bz2
+23. Запустить сборку для платы MACHINE=imx8mm-mgqs bitbake imx-image-multimedia
+24. Полученный образ расположен в $PATH_TO/imx-yocto-bsp/build/tmp/deploy/images/imx8mm-mgqs/imx-image-multimedia-imx8mm-mgqs-*.rootfs.wic.bz2
